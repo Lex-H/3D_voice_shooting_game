@@ -748,10 +748,10 @@
       <div><kbd>點擊畫面</kbd> 鎖定視角與滑鼠左鍵射擊</div>
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動角色 ｜ <kbd>Space</kbd> 跳躍</div>
       <div><kbd>←</kbd><kbd>→</kbd> 輔助轉向 ｜ <kbd>ESC</kbd> 釋放滑鼠游標</div>
-      <div>靠近任何人會自動打招呼；也可按 <kbd>E</kbd> 或右下角按鈕錄音對談</div>
+      <div>踏進外圈即生成招呼並存本機（未播放）；進內圈立刻播出 · 可錄音</div>
       <div id="pointer-status" class="lock-badge unlocked">視角未鎖定（點擊 3D 畫面鎖定準星）</div>
     </div>
-    <div id="mobile-hint" class="hud-card">右側拖曳轉向 · 左搖桿移動 · 右下射擊／跳躍 · 靠近角色會自動說話</div>
+    <div id="mobile-hint" class="hud-card">右側拖曳轉向 · 左搖桿移動 · 外圈備妥招呼、內圈才播放</div>
   </div>
 
   <button id="settings-toggle-btn" type="button" aria-label="開啟語音設定">⚙️</button>
@@ -823,14 +823,14 @@
       <div id="dialogue-npc-el" class="dialogue-npc"></div>
     </div>
     <div id="status-bar" class="state-idle">
-      <span id="status-text">狀態：待機中（靠近任一角色會自動打招呼，也可按按鈕錄音）</span>
+      <span id="status-text">狀態：待機中（外圈生成並存未播放招呼，內圈立刻播出）</span>
     </div>
   </div>
 
   <!-- 右下角：靠近 NPC 時才顯示的對話/錄音開關按鈕 -->
   <div id="npc-interact-container">
     <button id="npc-talk-btn" type="button">🎤 與 NPC 對話</button>
-    <div class="npc-btn-hint">靠近會自動打招呼。按 E 或點此按鈕可錄音對談</div>
+    <div class="npc-btn-hint">外圈遠距備妥招呼；內圈可聽語音。按 E 或點此錄音</div>
   </div>
 
   <script type="module">
@@ -840,7 +840,9 @@
     // 1. 全域常數與 DOM 元素參照
     // =========================================================================
     const STORAGE_KEY_API = 'GEMINI_API_KEY';
-    const NPC_INTERACT_DISTANCE = 4.8; // 觸發顯示對話按鈕的距離（公尺）
+    const STORAGE_KEY_CHAT = 'OUTPOST_CHAT_HISTORY';
+    const NPC_INTERACT_DISTANCE = 4.8; // 足夠靠近：播放語音、顯示字幕、錄音按鈕
+    const NPC_AUTO_DIALOG_DISTANCE = NPC_INTERACT_DISTANCE * 10; // 外圈半徑（×10＝直徑為內圈 10 倍；改這行的倍數即可調外圈大小）
     const PLAYER_HEIGHT = 1.7;         // 玩家眼睛高度
     const PLAYER_RADIUS = 0.45;        // 玩家碰撞半徑
 
@@ -1490,13 +1492,21 @@
       group.add(indicator);
       group.add(createNameSprite(`${cfg.emoji} ${cfg.name}`, cfg.accentCss));
 
-      const ring = new THREE.Mesh(
+      const voiceRing = new THREE.Mesh(
         new THREE.RingGeometry(NPC_INTERACT_DISTANCE - 0.12, NPC_INTERACT_DISTANCE, 40),
-        new THREE.MeshBasicMaterial({ color: cfg.marker, side: THREE.DoubleSide, transparent: true, opacity: 0.28 })
+        new THREE.MeshBasicMaterial({ color: cfg.marker, side: THREE.DoubleSide, transparent: true, opacity: 0.32 })
       );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.03;
-      group.add(ring);
+      voiceRing.rotation.x = -Math.PI / 2;
+      voiceRing.position.y = 0.02;
+      group.add(voiceRing);
+
+      const autoRing = new THREE.Mesh(
+        new THREE.RingGeometry(NPC_AUTO_DIALOG_DISTANCE - 0.22, NPC_AUTO_DIALOG_DISTANCE, 56),
+        new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.22 })
+      );
+      autoRing.rotation.x = -Math.PI / 2;
+      autoRing.position.y = 0.015;
+      group.add(autoRing);
 
       const record = {
         ...cfg,
@@ -1504,7 +1514,10 @@
         headGroup,
         indicator,
         near: false,
-        wasNear: false,
+        inAutoZone: false,
+        wasNearAuto: false,
+        wasNearVoice: false,
+        pendingGreeting: null,
         nextAutoAt: 0,
         phase: Math.random() * Math.PI * 2
       };
@@ -1855,6 +1868,7 @@
       if (document.activeElement === apiKeyInput) return;
 
       keys[e.code] = true;
+      ensureAudioContext();
 
       if (e.code === 'Space') tryJump();
 
@@ -2225,7 +2239,130 @@
     let isProcessingVoice = false;
     let mediaRecorder = null;
     let recordedChunks = [];
-    const npcChatHistory = []; // 保留最近幾輪對話記憶，讓 NPC 對答更連貫
+    const npcChatHistory = [];
+
+    function loadChatHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_CHAT);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return;
+        for (const h of parsed) {
+          if (h.played === undefined) h.played = true;
+          npcChatHistory.push(h);
+        }
+      } catch (err) {
+        console.warn('讀取對話歷史失敗：', err);
+      }
+    }
+
+    function getPlayedHistory() {
+      return npcChatHistory.filter((h) => h.played !== false);
+    }
+
+    function findUnplayedGreetingForNpc(npcId) {
+      for (let i = npcChatHistory.length - 1; i >= 0; i--) {
+        const h = npcChatHistory[i];
+        if (h.type === 'auto' && h.npcId === npcId && h.played === false) return h;
+      }
+      return null;
+    }
+
+    function removeUnplayedGreetingsForNpc(npcId) {
+      for (let i = npcChatHistory.length - 1; i >= 0; i--) {
+        const h = npcChatHistory[i];
+        if (h.type === 'auto' && h.npcId === npcId && h.played === false) {
+          npcChatHistory.splice(i, 1);
+        }
+      }
+    }
+
+    function saveUnplayedGreeting(npc, reply, audioBase64, audioMime, style) {
+      removeUnplayedGreetingsForNpc(npc.id);
+      const entry = {
+        id: `${npc.id}-${Date.now()}`,
+        type: 'auto',
+        user: '',
+        npc: reply,
+        npcName: npc.name,
+        npcId: npc.id,
+        style,
+        played: false,
+        audioBase64,
+        audioMime,
+        ts: Date.now()
+      };
+      npcChatHistory.push(entry);
+      saveChatHistory();
+      return entry;
+    }
+
+    function markGreetingPlayed(historyId) {
+      const entry = npcChatHistory.find((h) => h.id === historyId);
+      if (!entry) return;
+      entry.played = true;
+      entry.playedAt = Date.now();
+      saveChatHistory();
+    }
+
+    function attachPendingFromHistory(npc, entry) {
+      if (!entry) return false;
+      npc.pendingGreeting = {
+        historyId: entry.id,
+        reply: entry.npc,
+        audioBase64: entry.audioBase64,
+        audioMime: entry.audioMime,
+        ready: !!(entry.audioBase64 && entry.npc),
+        delivered: false
+      };
+      return npc.pendingGreeting.ready;
+    }
+
+    function saveChatHistory() {
+      try {
+        localStorage.setItem(STORAGE_KEY_CHAT, JSON.stringify(npcChatHistory));
+      } catch (err) {
+        console.warn('儲存對話歷史失敗：', err);
+      }
+    }
+
+    function appendChatHistory(entry) {
+      npcChatHistory.push({
+        ...entry,
+        ts: Date.now(),
+        played: entry.played !== undefined ? entry.played : true
+      });
+      saveChatHistory();
+    }
+
+    function formatFullHistoryForPrompt() {
+      const played = getPlayedHistory();
+      if (!played.length) return '';
+      return '\n完整歷史對話（依時間順序，僅已播放／已發生）：\n' + played.map((h) => {
+        if (h.type === 'auto') return `【自動招呼】${h.npcName || '角色'}：${h.npc}`;
+        return `玩家：${h.user}\n${h.npcName || '角色'}：${h.npc}`;
+      }).join('\n');
+    }
+
+    function buildGeminiContentsFromHistory(finalUserParts) {
+      const contents = [];
+      for (const h of getPlayedHistory()) {
+        if (h.type === 'auto') {
+          contents.push({
+            role: 'user',
+            parts: [{ text: `（玩家走近，${h.npcName || '角色'}自動打招呼）` }]
+          });
+          contents.push({ role: 'model', parts: [{ text: h.npc }] });
+        } else {
+          contents.push({ role: 'user', parts: [{ text: h.user || '（語音訊息）' }] });
+          contents.push({ role: 'model', parts: [{ text: h.npc }] });
+        }
+      }
+      contents.push({ role: 'user', parts: finalUserParts });
+      return contents;
+    }
+
+    loadChatHistory();
 
     // 避免點擊對話按鈕時觸發 3D 射擊
     npcInteractContainer.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -2384,10 +2521,6 @@
         setVoiceStatus('processing', `狀態：⏳ 上傳辨識與生成語音中（1/2 ${chatModel} 聽取語音中...）`);
         const base64Audio = await blobToBase64(audioBlob);
 
-        const recentHistoryText = npcChatHistory.length
-          ? '\n近期對話紀錄：\n' + npcChatHistory.slice(-4).map((h) => `玩家：${h.user}\n${h.npcName || speaker.name}：${h.npc}`).join('\n')
-          : '';
-
         const systemPrompt = [
           `你是 3D 射擊前哨站的角色「${speaker.name}」。`,
           speaker.persona,
@@ -2395,10 +2528,9 @@
           `目前玩家戰績：得分 ${score} 分，已擊破 ${totalKills} 個敵人方塊。場景有木屋、醫務站、無線電站、補給倉庫、東哨所、練習標靶、紅色敵人方塊、一隻橘貓與兩隻狗。`,
           '請聽取玩家的錄音內容，依角色語氣直接回答（控制在 1 到 3 句話、約 20～65 字內，適合直接語音朗讀，勿加星號或舞台動作括號）。',
           `請嚴格輸出 JSON 格式：{"transcript":"玩家說的話轉錄","reply":"${speaker.name}的口語回答","style":"${speaker.style}"}`,
-          recentHistoryText
+          formatFullHistoryForPrompt()
         ].join('\n');
 
-        // 呼叫 Gemini 3 理解音訊並產生角色台詞
         const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chatModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
         const chatRes = await fetch(chatUrl, {
           method: 'POST',
@@ -2410,15 +2542,10 @@
             systemInstruction: {
               parts: [{ text: systemPrompt }]
             },
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { inlineData: { mimeType, data: base64Audio } },
-                  { text: `請辨識這段語音並以${speaker.name}的身分回覆 JSON。` }
-                ]
-              }
-            ],
+            contents: buildGeminiContentsFromHistory([
+              { inlineData: { mimeType, data: base64Audio } },
+              { text: `請辨識這段語音並以${speaker.name}的身分回覆 JSON。` }
+            ]),
             generationConfig: {
               responseMimeType: 'application/json',
               thinkingConfig: { thinkingLevel: 'LOW' }
@@ -2447,7 +2574,13 @@
         const npcReplyText = parsed.reply || '聽不太清楚，通訊有點雜訊，再跟我說一次吧！';
         const voiceStyle = parsed.style || speaker.style;
 
-        npcChatHistory.push({ user: userTranscript, npc: npcReplyText, npcName: speaker.name });
+        appendChatHistory({
+          type: 'record',
+          user: userTranscript,
+          npc: npcReplyText,
+          npcName: speaker.name,
+          npcId: speaker.id
+        });
         dialogueUserEl.textContent = `🗣️ 你說：「${userTranscript}」`;
         dialogueNpcEl.innerHTML = `<strong>${speaker.emoji} ${speaker.name}：</strong>「${npcReplyText}」`;
         dialogueBox.classList.add('visible');
@@ -2671,7 +2804,7 @@
           activeVoiceAudio = null;
           isNpcSpeaking = false;
           speakingNpc = null;
-          setVoiceStatus('idle', '狀態：✅ 語音播放完畢（再靠近角色會再次自動打招呼）');
+          setVoiceStatus('idle', '狀態：✅ 語音播放完畢（進入外圈會再次準備招呼）');
           flushPendingAutoTalk();
         }
       };
@@ -2684,11 +2817,20 @@
         flushPendingAutoTalk();
       };
 
-      await audio.play();
+      ensureAudioContext();
+      try {
+        await audio.play();
+      } catch (err) {
+        isNpcSpeaking = false;
+        speakingNpc = null;
+        activeVoiceAudio = null;
+        URL.revokeObjectURL(audioUrl);
+        throw err;
+      }
     }
 
     function flushPendingAutoTalk() {
-      if (!pendingAutoNpc || !pendingAutoNpc.near) {
+      if (!pendingAutoNpc || !pendingAutoNpc.inAutoZone) {
         pendingAutoNpc = null;
         return;
       }
@@ -2698,7 +2840,14 @@
     }
 
     function requestAutoTalk(npc) {
-      if (!npc || performance.now() < npc.nextAutoAt) return;
+      if (!npc || !npc.inAutoZone) return;
+      const unplayed = findUnplayedGreetingForNpc(npc.id);
+      if (unplayed) {
+        attachPendingFromHistory(npc, unplayed);
+        if (npc.near) deliverPendingGreeting(npc);
+        return;
+      }
+      if (performance.now() < npc.nextAutoAt) return;
       if (autoTalkBusy || isRecording || isProcessingVoice || isNpcSpeaking) {
         pendingAutoNpc = npc;
         return;
@@ -2707,14 +2856,49 @@
       runAutoTalk(npc);
     }
 
+    async function deliverPendingGreeting(npc) {
+      if (!npc.near || isRecording || isProcessingVoice || isNpcSpeaking) return;
+      if (!npc.pendingGreeting?.ready || npc.pendingGreeting.delivered) {
+        attachPendingFromHistory(npc, findUnplayedGreetingForNpc(npc.id));
+      }
+      const pack = npc.pendingGreeting;
+      if (!pack?.ready || pack.delivered || !npc.near) return;
+      if (isRecording || isProcessingVoice || isNpcSpeaking) return;
+
+      pack.delivered = true;
+      dialogueUserEl.textContent = '（走近後自動打招呼）';
+      dialogueNpcEl.innerHTML = `<strong>${npc.emoji} ${npc.name}：</strong>「${pack.reply}」`;
+      dialogueBox.classList.add('visible');
+
+      speakingNpc = npc;
+      try {
+        await playBase64NpcAudio(pack.audioBase64, pack.audioMime, `${npc.emoji} ${npc.name}`);
+        if (pack.historyId) markGreetingPlayed(pack.historyId);
+        npc.pendingGreeting = null;
+      } catch (err) {
+        pack.delivered = false;
+        isNpcSpeaking = false;
+        speakingNpc = null;
+        console.error('播放招呼失敗：', err);
+        setVoiceStatus('error', `狀態：❌ 語音還沒播出 — ${err.message || '請先點一下畫面或按任意鍵，再開進內圈'}`);
+      }
+    }
+
+    function tryDeliverAllPendingGreetings() {
+      for (const npc of characters) {
+        if (npc.near && npc.pendingGreeting?.ready && !npc.pendingGreeting.delivered) {
+          deliverPendingGreeting(npc);
+          break;
+        }
+      }
+    }
+
     async function runAutoTalk(npc) {
       const token = ++autoTalkToken;
       autoTalkBusy = true;
-      speakingNpc = npc;
       const apiKey = (apiKeyInput.value.trim() || localStorage.getItem(STORAGE_KEY_API) || '').trim();
       if (!apiKey) {
         autoTalkBusy = false;
-        speakingNpc = null;
         setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 請先在右上角輸入並儲存 GEMINI_API_KEY，角色才能自動說話');
         apiKeyInput.focus();
         return;
@@ -2724,18 +2908,20 @@
         ensureAudioContext();
         const chatModel = chatModelSelect.value;
         const ttsModel = ttsModelSelect.value;
-        setVoiceStatus('processing', `狀態：⏳ ${npc.name} 正在想招呼語（${chatModel}）...`);
+        setVoiceStatus('processing', `狀態：⏳ 偵測到 ${npc.name}（外圈）— ${chatModel} 準備招呼語...`);
         const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chatModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
         const prompt = [
           `你是 3D 射擊前哨站的角色「${npc.name}」。`,
           npc.persona,
-          '玩家剛走到你身邊，請主動用台灣繁體中文打招呼。',
+          '玩家正在遠距靠近你（尚未走到面前），請先想好一段主動打招呼的台詞，之後會在玩家夠近時播放。',
           '內容要像這個人當下會說的話，可以提到木屋、醫務站、無線電站、補給倉庫、東哨所、練習標靶、紅色敵人方塊、橘貓或兩隻狗。',
           `玩家目前得分 ${score}，擊破 ${totalKills}。每次說法不要重複同一句。`,
           '只講 1 到 2 句，25 到 55 字，不要星號、不要括號動作。',
-          `嚴格輸出 JSON：{"reply":"台詞","style":"${npc.style}"}`
+          `嚴格輸出 JSON：{"reply":"台詞","style":"${npc.style}"}`,
+          formatFullHistoryForPrompt()
         ].join('\n');
 
+        const historyContents = buildGeminiContentsFromHistory([{ text: prompt }]);
         const chatRes = await fetch(chatUrl, {
           method: 'POST',
           headers: {
@@ -2743,7 +2929,7 @@
             'x-goog-api-key': apiKey
           },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            contents: historyContents,
             generationConfig: {
               responseMimeType: 'application/json',
               temperature: 1.15,
@@ -2767,25 +2953,30 @@
         } catch (_) {
           reply = raw;
         }
-        if (!reply) reply = `${npc.name}點點頭：前哨站今天還算平靜，看到橘貓跟狗就別踩到牠們。`;
+        if (!reply) reply = `${npc.name}遠遠向妳招呼：前哨站今天還算平靜，走進來再細聊。`;
 
-        dialogueUserEl.textContent = '（走近後自動打招呼）';
-        dialogueNpcEl.innerHTML = `<strong>${npc.emoji} ${npc.name}：</strong>「${reply}」`;
-        dialogueBox.classList.add('visible');
-
-        setVoiceStatus('processing', `狀態：⏳ ${ttsModel} 正在合成 ${npc.name} 的語音...`);
+        setVoiceStatus('processing', `狀態：⏳ ${ttsModel} 合成 ${npc.name} 語音（外圈備妥，走進內圈才播放）...`);
         const audioResult = await requestGemini3TtsAudio(apiKey, ttsModel, reply, style, npc.voice);
         if (token !== autoTalkToken) return;
-        await playBase64NpcAudio(audioResult.base64Data, audioResult.mimeType, `${npc.emoji} ${npc.name}`);
+
+        const stored = saveUnplayedGreeting(npc, reply, audioResult.base64Data, audioResult.mimeType, style);
+        attachPendingFromHistory(npc, stored);
+
+        if (npc.near) {
+          await deliverPendingGreeting(npc);
+        } else if (!isRecording && !isProcessingVoice && !isNpcSpeaking) {
+          setVoiceStatus('idle', `狀態：✅ ${npc.name} 招呼已存本機（未播放）— 走進內圈立刻播出`);
+        }
       } catch (err) {
         console.error('自動打招呼錯誤：', err);
         if (token === autoTalkToken) {
-          isNpcSpeaking = false;
-          speakingNpc = null;
+          npc.nextAutoAt = performance.now() + 4000;
           setVoiceStatus('error', `狀態：❌ 錯誤訊息 — ${err.message}`);
         }
       } finally {
         if (token === autoTalkToken) autoTalkBusy = false;
+        flushPendingAutoTalk();
+        tryDeliverAllPendingGreetings();
       }
     }
 
@@ -2908,21 +3099,34 @@
       let nearestDist = Infinity;
       for (const npc of characters) {
         const dist = Math.hypot(playerPos.x - npc.group.position.x, playerPos.z - npc.group.position.z);
+        const inAutoZone = dist <= NPC_AUTO_DIALOG_DISTANCE;
         const nowNear = dist <= NPC_INTERACT_DISTANCE;
         if (nowNear && dist < nearestDist) {
           nearest = npc;
           nearestDist = dist;
         }
-        if (nowNear && !npc.wasNear) {
-          npc.wasNear = true;
-          requestAutoTalk(npc);
-        } else if (!nowNear && npc.wasNear) {
-          npc.wasNear = false;
-          if (pendingAutoNpc === npc) pendingAutoNpc = null;
-        }
+        npc.inAutoZone = inAutoZone;
         npc.near = nowNear;
 
+        if (inAutoZone) {
+          npc.wasNearAuto = true;
+          requestAutoTalk(npc);
+        } else if (npc.wasNearAuto) {
+          npc.wasNearAuto = false;
+          if (pendingAutoNpc === npc) pendingAutoNpc = null;
+        }
+
         if (nowNear) {
+          npc.wasNearVoice = true;
+          if (!npc.pendingGreeting?.ready) {
+            attachPendingFromHistory(npc, findUnplayedGreetingForNpc(npc.id));
+          }
+          deliverPendingGreeting(npc);
+        } else if (npc.wasNearVoice) {
+          npc.wasNearVoice = false;
+        }
+
+        if (nowNear || inAutoZone) {
           npc.group.rotation.y = Math.atan2(
             playerPos.x - npc.group.position.x,
             playerPos.z - npc.group.position.z
@@ -2947,17 +3151,26 @@
         if (isNearNpc) {
           npcInteractContainer.classList.add('visible');
           if (!isRecording && !isProcessingVoice && !isNpcSpeaking) {
-            setVoiceStatus('idle', `狀態：已靠近${focusNpc.name} — 正在準備自動打招呼，也可按 E 錄音`);
+            const ready = focusNpc?.pendingGreeting?.ready;
+            setVoiceStatus(
+              'idle',
+              ready
+                ? `狀態：已進入 ${focusNpc.name} 內圈 — 字幕與語音播放中／即將播放`
+                : `狀態：已進入 ${focusNpc.name} 內圈 — 等候外圈招呼備妥，也可按 E 錄音`
+            );
           }
+          tryDeliverAllPendingGreetings();
         } else {
           npcInteractContainer.classList.remove('visible');
           if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
             stopMicRecordingAndSend();
           } else if (!isProcessingVoice && !isNpcSpeaking) {
-            setVoiceStatus('idle', '狀態：待機中（靠近任一角色會自動打招呼）');
+            setVoiceStatus('idle', '狀態：待機中（進入外圈會準備招呼，走進內圈才播放）');
           }
         }
       }
+
+      tryDeliverAllPendingGreetings();
 
       renderer.render(scene, camera);
     }
