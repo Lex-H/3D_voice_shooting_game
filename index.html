@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>3D 前哨站射擊原型 — Gemini 3 語音互動整合</title>
   <style>
     * {
@@ -459,6 +459,272 @@
       from { opacity: 0; transform: translateY(12px) scale(0.95); }
       to { opacity: 1; transform: translateY(0) scale(1); }
     }
+
+    /* ================= 行動裝置：橫屏引導與觸控操作 ================= */
+    #mobile-hint,
+    #settings-toggle-btn,
+    #look-pad,
+    #mobile-controls,
+    #portrait-gate {
+      display: none;
+    }
+
+    body.mobile {
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+
+    body.mobile input,
+    body.mobile select,
+    body.mobile textarea {
+      touch-action: manipulation;
+      user-select: text;
+    }
+
+    body.mobile.landscape #mobile-hint {
+      display: block;
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: #cbd5e1;
+      max-width: 46vw;
+    }
+
+    body.mobile .controls-guide {
+      display: none;
+    }
+
+    body.mobile #hud-top-left {
+      top: max(8px, env(safe-area-inset-top));
+      left: max(8px, env(safe-area-inset-left));
+      max-width: min(46vw, 280px);
+      gap: 6px;
+    }
+
+    body.mobile .hud-card {
+      padding: 8px 10px;
+    }
+
+    body.mobile .score-board {
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    body.mobile .score-value {
+      font-size: 18px;
+    }
+
+    body.mobile .kills-value {
+      font-size: 15px;
+    }
+
+    #settings-toggle-btn {
+      position: fixed;
+      top: max(8px, env(safe-area-inset-top));
+      right: max(8px, env(safe-area-inset-right));
+      z-index: 70;
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      background: rgba(15, 23, 42, 0.88);
+      color: #f8fafc;
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    body.mobile #settings-toggle-btn {
+      display: grid;
+      place-items: center;
+    }
+
+    body.mobile #settings-panel {
+      display: none;
+      top: calc(max(8px, env(safe-area-inset-top)) + 54px);
+      right: max(8px, env(safe-area-inset-right));
+      width: min(340px, 78vw);
+      max-height: min(52vh, 280px);
+      overflow: auto;
+      z-index: 68;
+    }
+
+    body.mobile #settings-panel.open {
+      display: block;
+    }
+
+    body.mobile #bottom-hud {
+      bottom: max(10px, env(safe-area-inset-bottom));
+      width: min(460px, 46vw);
+      gap: 6px;
+    }
+
+    body.mobile #status-bar {
+      font-size: 11px;
+      padding: 5px 10px;
+    }
+
+    body.mobile #dialogue-box {
+      font-size: 12.5px;
+      padding: 8px 10px;
+    }
+
+    body.mobile #npc-interact-container {
+      right: max(108px, calc(env(safe-area-inset-right) + 108px));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      align-items: center;
+    }
+
+    body.mobile #npc-talk-btn {
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+
+    body.mobile .npc-btn-hint {
+      max-width: 180px;
+      text-align: center;
+    }
+
+    #look-pad {
+      position: fixed;
+      inset: 0;
+      z-index: 12;
+      touch-action: none;
+      background: transparent;
+    }
+
+    body.mobile.landscape #look-pad {
+      display: block;
+    }
+
+    body.mobile.settings-open #look-pad {
+      pointer-events: none;
+    }
+
+    #mobile-controls {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none;
+    }
+
+    body.mobile.landscape #mobile-controls {
+      display: block;
+    }
+
+    #joystick-zone {
+      pointer-events: auto;
+      position: absolute;
+      left: max(16px, env(safe-area-inset-left));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      width: 148px;
+      height: 148px;
+      touch-action: none;
+    }
+
+    #joystick-base {
+      width: 128px;
+      height: 128px;
+      margin: 10px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.42);
+      border: 2px solid rgba(226, 232, 240, 0.45);
+      box-shadow: inset 0 0 0 10px rgba(15, 23, 42, 0.25);
+      position: relative;
+    }
+
+    #joystick-knob {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.92);
+      border: 2px solid rgba(255, 255, 255, 0.7);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      margin-left: -29px;
+      margin-top: -29px;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    }
+
+    .touch-action-btn {
+      pointer-events: auto;
+      position: absolute;
+      touch-action: none;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.55);
+      color: #fff;
+      font-weight: 800;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+    }
+
+    #fire-btn {
+      width: 84px;
+      height: 84px;
+      right: max(22px, env(safe-area-inset-right));
+      bottom: max(108px, calc(env(safe-area-inset-bottom) + 96px));
+      background: linear-gradient(160deg, #ef4444, #b91c1c);
+    }
+
+    #jump-btn {
+      width: 68px;
+      height: 68px;
+      right: max(30px, calc(env(safe-area-inset-right) + 8px));
+      bottom: max(22px, env(safe-area-inset-bottom));
+      background: linear-gradient(160deg, #0ea5e9, #0369a1);
+      font-size: 15px;
+    }
+
+    #portrait-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      background: rgba(2, 6, 23, 0.94);
+      color: #f8fafc;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      text-align: center;
+      padding: 28px;
+    }
+
+    body.mobile.portrait #portrait-gate {
+      display: flex;
+    }
+
+    #portrait-gate h2 {
+      font-size: 26px;
+      letter-spacing: 0.04em;
+    }
+
+    #portrait-gate p {
+      max-width: 320px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      font-size: 15px;
+    }
+
+    #enter-landscape-btn {
+      margin-top: 8px;
+      padding: 14px 22px;
+      border: none;
+      border-radius: 12px;
+      background: #2563eb;
+      color: white;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .phone-glyph {
+      width: 54px;
+      height: 86px;
+      border: 3px solid #e2e8f0;
+      border-radius: 10px;
+      transform: rotate(90deg);
+      margin-bottom: 6px;
+    }
   </style>
 
   <!-- 使用 Import Map 從 CDN 引入 Three.js -->
@@ -485,6 +751,28 @@
       <div>靠近木屋旁 NPC 可點擊右下角按鈕（或按 <kbd>E</kbd>）語音對話</div>
       <div id="pointer-status" class="lock-badge unlocked">視角未鎖定（點擊 3D 畫面鎖定準星）</div>
     </div>
+    <div id="mobile-hint" class="hud-card">右側拖曳轉向 · 左搖桿移動 · 右下射擊／跳躍 · 靠近 NPC 點對話</div>
+  </div>
+
+  <button id="settings-toggle-btn" type="button" aria-label="開啟語音設定">⚙️</button>
+
+  <div id="look-pad" aria-hidden="true"></div>
+
+  <div id="mobile-controls">
+    <div id="joystick-zone" aria-label="移動搖桿">
+      <div id="joystick-base">
+        <div id="joystick-knob"></div>
+      </div>
+    </div>
+    <button id="fire-btn" class="touch-action-btn" type="button">射擊</button>
+    <button id="jump-btn" class="touch-action-btn" type="button">跳</button>
+  </div>
+
+  <div id="portrait-gate">
+    <div class="phone-glyph" aria-hidden="true"></div>
+    <h2>請將手機橫放</h2>
+    <p>此射擊遊戲以橫向操作。若瀏覽器允許，按下按鈕會嘗試進入全螢幕並鎖定橫屏；iPhone 需手動轉成橫向。</p>
+    <button id="enter-landscape-btn" type="button">嘗試鎖定橫屏並開始</button>
   </div>
 
   <!-- 右上角：Gemini API Key 與模型設定 -->
@@ -1274,10 +1562,7 @@
 
       keys[e.code] = true;
 
-      if (e.code === 'Space' && isGrounded) {
-        playerVelY = 6.8;
-        isGrounded = false;
-      }
+      if (e.code === 'Space') tryJump();
 
       // 支援按 [E] 鍵直接觸發右下角 NPC 錄音開關按鈕（免解鎖滑鼠也能測語音）
       if (e.code === 'KeyE' && isNearNpc && !npcTalkBtn.disabled) {
@@ -1291,6 +1576,10 @@
 
     // Pointer Lock 滑鼠鎖定狀態更新
     document.addEventListener('pointerlockchange', () => {
+      if (document.body.classList.contains('mobile')) {
+        refreshLayoutMode();
+        return;
+      }
       const locked = document.pointerLockElement === renderer.domElement;
       if (locked) {
         pointerStatusEl.textContent = '視角已鎖定（滑鼠轉向、左鍵射擊、ESC 解鎖游標）';
@@ -1425,6 +1714,7 @@
     // 點擊 3D 畫布：鎖定滑鼠視角並執行左鍵射擊
     renderer.domElement.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      if (document.body.classList.contains('mobile')) return;
       ensureAudioContext();
 
       if (document.pointerLockElement !== renderer.domElement) {
@@ -1433,6 +1723,197 @@
         shootWeapon();
       }
     });
+
+    // =========================================================================
+    // 8b. 行動裝置：橫屏鎖定、觸控轉向、虛擬搖桿、射擊與跳躍
+    // =========================================================================
+    const moveInput = { forward: false, back: false, left: false, right: false };
+
+    function tryJump() {
+      if (!isGrounded) return;
+      playerVelY = 6.8;
+      isGrounded = false;
+    }
+
+    function isMobileDevice() {
+      const ua = navigator.userAgent || '';
+      const iPadOs = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+      const uaMobile = /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(ua) || iPadOs;
+      const coarsePrimary = window.matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
+      return uaMobile || coarsePrimary;
+    }
+
+    const settingsPanel = document.getElementById('settings-panel');
+    const settingsToggleBtn = document.getElementById('settings-toggle-btn');
+    const lookPad = document.getElementById('look-pad');
+    const joystickZone = document.getElementById('joystick-zone');
+    const joystickKnob = document.getElementById('joystick-knob');
+    const fireBtn = document.getElementById('fire-btn');
+    const jumpBtn = document.getElementById('jump-btn');
+    const portraitBtn = document.getElementById('enter-landscape-btn');
+    const npcHintEl = document.querySelector('.npc-btn-hint');
+
+    function refreshLayoutMode() {
+      const mobile = isMobileDevice();
+      const portrait = window.matchMedia('(orientation: portrait)').matches;
+      document.body.classList.toggle('mobile', mobile);
+      document.body.classList.toggle('portrait', mobile && portrait);
+      document.body.classList.toggle('landscape', mobile && !portrait);
+      const gate = document.getElementById('portrait-gate');
+      const controls = document.getElementById('mobile-controls');
+      if (gate) gate.setAttribute('aria-hidden', mobile && portrait ? 'false' : 'true');
+      if (controls) controls.setAttribute('aria-hidden', mobile && !portrait ? 'false' : 'true');
+      if (!mobile) {
+        document.body.classList.remove('settings-open');
+        return;
+      }
+      pointerStatusEl.textContent = portrait
+        ? '請橫放手機後使用觸控操作'
+        : '觸控模式：拖曳轉向、搖桿移動、按鈕射擊';
+      pointerStatusEl.className = 'lock-badge locked';
+      if (npcHintEl) npcHintEl.textContent = '點擊按鈕開始或停止錄音';
+    }
+
+    function tryLockLandscape() {
+      const el = document.documentElement;
+      const tasks = [];
+      try {
+        if (!document.fullscreenElement) {
+          if (el.requestFullscreen) tasks.push(Promise.resolve(el.requestFullscreen()));
+          else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        }
+      } catch (_) { /* 部分瀏覽器拒絕全螢幕 */ }
+      try {
+        if (screen.orientation && screen.orientation.lock) {
+          tasks.push(screen.orientation.lock('landscape'));
+        }
+      } catch (_) { /* iOS 等不支援鎖定方向 */ }
+      Promise.allSettled(tasks).finally(() => refreshLayoutMode());
+    }
+
+    refreshLayoutMode();
+    window.matchMedia('(orientation: portrait)').addEventListener('change', refreshLayoutMode);
+    if (screen.orientation && screen.orientation.addEventListener) {
+      screen.orientation.addEventListener('change', refreshLayoutMode);
+    }
+
+    settingsToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!document.body.classList.contains('mobile')) return;
+      const open = settingsPanel.classList.toggle('open');
+      document.body.classList.toggle('settings-open', open);
+    });
+
+    portraitBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      ensureAudioContext();
+      tryLockLandscape();
+    });
+
+    document.addEventListener('pointerdown', () => {
+      if (!document.body.classList.contains('mobile')) return;
+      ensureAudioContext();
+      tryLockLandscape();
+    }, { once: true });
+
+    window.addEventListener('contextmenu', (e) => {
+      if (document.body.classList.contains('mobile')) e.preventDefault();
+    });
+
+    let lookPointerId = null;
+    let lookX = 0;
+    let lookY = 0;
+    lookPad.addEventListener('pointerdown', (e) => {
+      if (!document.body.classList.contains('landscape')) return;
+      if (lookPointerId !== null) return;
+      lookPointerId = e.pointerId;
+      lookX = e.clientX;
+      lookY = e.clientY;
+      try { lookPad.setPointerCapture(e.pointerId); } catch (_) {}
+      ensureAudioContext();
+    });
+    lookPad.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== lookPointerId) return;
+      const dx = e.clientX - lookX;
+      const dy = e.clientY - lookY;
+      lookX = e.clientX;
+      lookY = e.clientY;
+      const sensitivity = 0.0048;
+      yaw -= dx * sensitivity;
+      pitch -= dy * sensitivity;
+      pitch = Math.max(-Math.PI / 2.15, Math.min(Math.PI / 2.15, pitch));
+    });
+    function endLook(e) {
+      if (e.pointerId === lookPointerId) lookPointerId = null;
+    }
+    lookPad.addEventListener('pointerup', endLook);
+    lookPad.addEventListener('pointercancel', endLook);
+
+    let joyPointerId = null;
+    const JOY_MAX = 42;
+    function resetJoy() {
+      joyPointerId = null;
+      joystickKnob.style.transform = 'translate(0px, 0px)';
+      moveInput.forward = false;
+      moveInput.back = false;
+      moveInput.left = false;
+      moveInput.right = false;
+    }
+    function applyJoy(clientX, clientY) {
+      const rect = joystickZone.getBoundingClientRect();
+      const originX = rect.left + rect.width / 2;
+      const originY = rect.top + rect.height / 2;
+      const dx = clientX - originX;
+      const dy = clientY - originY;
+      const len = Math.hypot(dx, dy) || 1;
+      const clamped = Math.min(len, JOY_MAX);
+      const nx = dx / len;
+      const ny = dy / len;
+      joystickKnob.style.transform = `translate(${nx * clamped}px, ${ny * clamped}px)`;
+      const mag = clamped / JOY_MAX;
+      if (mag < 0.22) {
+        moveInput.forward = false;
+        moveInput.back = false;
+        moveInput.left = false;
+        moveInput.right = false;
+        return;
+      }
+      moveInput.forward = ny < -0.28;
+      moveInput.back = ny > 0.28;
+      moveInput.left = nx < -0.28;
+      moveInput.right = nx > 0.28;
+    }
+    joystickZone.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (joyPointerId !== null) return;
+      joyPointerId = e.pointerId;
+      try { joystickZone.setPointerCapture(e.pointerId); } catch (_) {}
+      ensureAudioContext();
+      applyJoy(e.clientX, e.clientY);
+    });
+    joystickZone.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== joyPointerId) return;
+      e.preventDefault();
+      applyJoy(e.clientX, e.clientY);
+    });
+    function endJoy(e) {
+      if (e.pointerId !== joyPointerId) return;
+      resetJoy();
+    }
+    joystickZone.addEventListener('pointerup', endJoy);
+    joystickZone.addEventListener('pointercancel', endJoy);
+
+    function bindTouchAction(btn, action) {
+      btn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ensureAudioContext();
+        action();
+      });
+    }
+    bindTouchAction(fireBtn, () => shootWeapon());
+    bindTouchAction(jumpBtn, () => tryJump());
 
     // =========================================================================
     // 9. 靠近 NPC 錄音開關與 Gemini 3 語音互動 + 自動語音播放
@@ -1930,10 +2411,10 @@
 
       let moveX = 0;
       let moveZ = 0;
-      if (keys['KeyW']) { moveX += forwardX; moveZ += forwardZ; }
-      if (keys['KeyS']) { moveX -= forwardX; moveZ -= forwardZ; }
-      if (keys['KeyD']) { moveX += rightX; moveZ += rightZ; }
-      if (keys['KeyA']) { moveX -= rightX; moveZ -= rightZ; }
+      if (keys['KeyW'] || moveInput.forward) { moveX += forwardX; moveZ += forwardZ; }
+      if (keys['KeyS'] || moveInput.back) { moveX -= forwardX; moveZ -= forwardZ; }
+      if (keys['KeyD'] || moveInput.right) { moveX += rightX; moveZ += rightZ; }
+      if (keys['KeyA'] || moveInput.left) { moveX -= rightX; moveZ -= rightZ; }
 
       const moveLen = Math.hypot(moveX, moveZ);
       if (moveLen > 0) {
@@ -2058,6 +2539,7 @@
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      refreshLayoutMode();
     });
 
     animate();
