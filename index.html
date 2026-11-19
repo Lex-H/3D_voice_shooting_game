@@ -748,10 +748,10 @@
       <div><kbd>點擊畫面</kbd> 鎖定視角與滑鼠左鍵射擊</div>
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動角色 ｜ <kbd>Space</kbd> 跳躍</div>
       <div><kbd>←</kbd><kbd>→</kbd> 輔助轉向 ｜ <kbd>ESC</kbd> 釋放滑鼠游標</div>
-      <div>靠近木屋旁 NPC 可點擊右下角按鈕（或按 <kbd>E</kbd>）語音對話</div>
+      <div>靠近任何人會自動打招呼；也可按 <kbd>E</kbd> 或右下角按鈕錄音對談</div>
       <div id="pointer-status" class="lock-badge unlocked">視角未鎖定（點擊 3D 畫面鎖定準星）</div>
     </div>
-    <div id="mobile-hint" class="hud-card">右側拖曳轉向 · 左搖桿移動 · 右下射擊／跳躍 · 靠近 NPC 點對話</div>
+    <div id="mobile-hint" class="hud-card">右側拖曳轉向 · 左搖桿移動 · 右下射擊／跳躍 · 靠近角色會自動說話</div>
   </div>
 
   <button id="settings-toggle-btn" type="button" aria-label="開啟語音設定">⚙️</button>
@@ -823,14 +823,14 @@
       <div id="dialogue-npc-el" class="dialogue-npc"></div>
     </div>
     <div id="status-bar" class="state-idle">
-      <span id="status-text">狀態：待機中（靠近木屋旁的「老兵傑克」即可語音對話）</span>
+      <span id="status-text">狀態：待機中（靠近任一角色會自動打招呼，也可按按鈕錄音）</span>
     </div>
   </div>
 
   <!-- 右下角：靠近 NPC 時才顯示的對話/錄音開關按鈕 -->
   <div id="npc-interact-container">
     <button id="npc-talk-btn" type="button">🎤 與 NPC 對話</button>
-    <div class="npc-btn-hint">按 ESC 可釋放游標點擊按鈕，或直接按 [E] 鍵切換錄音</div>
+    <div class="npc-btn-hint">靠近會自動打招呼。按 E 或點此按鈕可錄音對談</div>
   </div>
 
   <script type="module">
@@ -1012,7 +1012,7 @@
     sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.camera.near = 1;
     sunLight.shadow.camera.far = 95;
-    const shadowBound = 36;
+    const shadowBound = 50;
     sunLight.shadow.camera.left = -shadowBound;
     sunLight.shadow.camera.right = shadowBound;
     sunLight.shadow.camera.top = shadowBound;
@@ -1285,100 +1285,102 @@
       });
     }
 
+    /**
+     * 額外四棟可走進去的小屋：醫務站、無線電站、補給倉庫、東哨所
+     */
+    function buildSimpleBuilding({ hx, hz, width, depth, wallColor, roofColor, floorColor, sign }) {
+      const wallMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.84 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.72 });
+      const floorMat = new THREE.MeshStandardMaterial({ color: floorColor, roughness: 0.9 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+      const wallH = 3.05;
+      const thick = 0.34;
+      const doorW = Math.min(1.8, width - 1.4);
+      const doorH = 2.3;
+
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, depth), floorMat);
+      floor.position.set(hx, 0.04, hz);
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      addSolidBox(width, wallH, thick, hx, wallH / 2, hz - depth / 2, wallMat, true);
+      addSolidBox(thick, wallH, depth, hx - width / 2, wallH / 2, hz, wallMat, true);
+      addSolidBox(thick, wallH, depth, hx + width / 2, wallH / 2, hz, wallMat, true);
+
+      const sideFrontW = (width - doorW) / 2;
+      const frontZ = hz + depth / 2;
+      addSolidBox(sideFrontW, wallH, thick, hx - doorW / 2 - sideFrontW / 2, wallH / 2, frontZ, wallMat, true);
+      addSolidBox(sideFrontW, wallH, thick, hx + doorW / 2 + sideFrontW / 2, wallH / 2, frontZ, wallMat, true);
+      addSolidBox(doorW, wallH - doorH, thick, hx, doorH + (wallH - doorH) / 2, frontZ, wallMat, false);
+      addSolidBox(0.12, doorH, 0.4, hx - doorW / 2, doorH / 2, frontZ, woodMat, true);
+      addSolidBox(0.12, doorH, 0.4, hx + doorW / 2, doorH / 2, frontZ, woodMat, true);
+
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(width + 0.7, 0.2, depth + 0.7), roofMat);
+      roof.position.set(hx, wallH + 0.16, hz);
+      roof.castShadow = true;
+      roof.receiveShadow = true;
+      scene.add(roof);
+
+      const signCanvas = document.createElement('canvas');
+      signCanvas.width = 512;
+      signCanvas.height = 128;
+      const sctx = signCanvas.getContext('2d');
+      sctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      sctx.fillRect(8, 24, 496, 80);
+      sctx.fillStyle = '#f8fafc';
+      sctx.font = 'bold 54px "Noto Sans TC", sans-serif';
+      sctx.textAlign = 'center';
+      sctx.textBaseline = 'middle';
+      sctx.fillText(sign, 256, 64);
+      const signSprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(signCanvas), transparent: true })
+      );
+      signSprite.position.set(hx, wallH + 0.85, frontZ + 0.2);
+      signSprite.scale.set(3.2, 0.8, 1);
+      scene.add(signSprite);
+
+      return { x: hx, z: frontZ + 1.55 };
+    }
+
+    function buildExtraSettlements() {
+      return {
+        clinic: buildSimpleBuilding({
+          hx: -24, hz: 6, width: 7, depth: 6,
+          wallColor: 0xe2e8f0, roofColor: 0x0f766e, floorColor: 0xcbd5e1, sign: '醫務站'
+        }),
+        radio: buildSimpleBuilding({
+          hx: 26, hz: 14, width: 6, depth: 5.5,
+          wallColor: 0x334155, roofColor: 0x1d4ed8, floorColor: 0x475569, sign: '無線電站'
+        }),
+        warehouse: buildSimpleBuilding({
+          hx: -22, hz: 24, width: 8, depth: 6.5,
+          wallColor: 0xa16207, roofColor: 0x44403c, floorColor: 0x78350f, sign: '補給倉庫'
+        }),
+        post: buildSimpleBuilding({
+          hx: 26, hz: -16, width: 5.4, depth: 5,
+          wallColor: 0x78716c, roofColor: 0xb45309, floorColor: 0x57534e, sign: '東哨所'
+        })
+      };
+    }
+
     buildOutpostHouse();
     buildOutdoorProps();
+    const settlementSpots = buildExtraSettlements();
 
     // =========================================================================
-    // 6. 建立明顯的 NPC 角色（「老兵傑克」，位於木屋門前右側）
+    // 6. 駐站角色：老兵傑克 + 四位新居民（靠近會自動打招呼）
     // =========================================================================
-    const NPC_POS = new THREE.Vector3(4.2, 0, -3.2);
-    const npcGroup = new THREE.Group();
-    npcGroup.position.copy(NPC_POS);
-    scene.add(npcGroup);
-
-    // 將 NPC 本體也加入碰撞盒，避免玩家穿過 NPC 身體
-    wallColliders.push({
-      minX: NPC_POS.x - 0.55,
-      maxX: NPC_POS.x + 0.55,
-      minZ: NPC_POS.z - 0.55,
-      maxZ: NPC_POS.z + 0.55
-    });
-
-    let npcHeadGroup = null;
-    let npcTalkIndicator = null;
+    const characters = [];
+    const animals = [];
+    let focusNpc = null;
+    let speakingNpc = null;
     let isNpcSpeaking = false;
+    let autoTalkBusy = false;
+    let autoTalkToken = 0;
+    let pendingAutoNpc = null;
+    const NPC_POS = new THREE.Vector3(4.2, 0, -3.2);
 
-    function buildNpcCharacter() {
-      const skinMat = new THREE.MeshStandardMaterial({ color: 0xfdba74, roughness: 0.7 });
-      const vestMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.75 });
-      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 });
-      const beretMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.6 });
-      const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
-
-      // 雙腿
-      const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.28), pantsMat);
-      leftLeg.position.set(-0.17, 0.375, 0);
-      leftLeg.castShadow = true;
-      npcGroup.add(leftLeg);
-
-      const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.28), pantsMat);
-      rightLeg.position.set(0.17, 0.375, 0);
-      rightLeg.castShadow = true;
-      npcGroup.add(rightLeg);
-
-      // 戰術背心軀幹
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.82, 0.38), vestMat);
-      torso.position.set(0, 1.16, 0);
-      torso.castShadow = true;
-      npcGroup.add(torso);
-
-      // 雙臂
-      const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), skinMat);
-      leftArm.position.set(-0.46, 1.14, 0);
-      leftArm.castShadow = true;
-      npcGroup.add(leftArm);
-
-      const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), skinMat);
-      rightArm.position.set(0.46, 1.14, 0);
-      rightArm.castShadow = true;
-      npcGroup.add(rightArm);
-
-      // 頭部與紅色貝雷帽
-      npcHeadGroup = new THREE.Group();
-      npcHeadGroup.position.set(0, 1.78, 0);
-
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
-      head.castShadow = true;
-      npcHeadGroup.add(head);
-
-      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.05), darkMat);
-      eyeL.position.set(-0.1, 0.04, 0.22);
-      npcHeadGroup.add(eyeL);
-
-      const eyeR = eyeL.clone();
-      eyeR.position.x = 0.1;
-      npcHeadGroup.add(eyeR);
-
-      const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.14, 12), beretMat);
-      beret.position.set(0.03, 0.25, 0);
-      beret.rotation.z = -0.15;
-      npcHeadGroup.add(beret);
-
-      npcGroup.add(npcHeadGroup);
-
-      // 頭頂懸浮驚嘆號/語音晶體標記
-      npcTalkIndicator = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.18, 0),
-        new THREE.MeshStandardMaterial({
-          color: 0x38bdf8,
-          emissive: 0x0284c7,
-          emissiveIntensity: 0.8
-        })
-      );
-      npcTalkIndicator.position.set(0, 2.45, 0);
-      npcGroup.add(npcTalkIndicator);
-
-      // 頭頂名稱牌（Canvas Sprite）
+    function createNameSprite(text, accent) {
       const labelCanvas = document.createElement('canvas');
       labelCanvas.width = 512;
       labelCanvas.height = 128;
@@ -1387,37 +1389,329 @@
       lctx.beginPath();
       lctx.roundRect(16, 16, 480, 96, 24);
       lctx.fill();
-      lctx.strokeStyle = '#38bdf8';
+      lctx.strokeStyle = accent;
       lctx.lineWidth = 5;
       lctx.stroke();
       lctx.fillStyle = '#f8fafc';
-      lctx.font = 'bold 38px "Noto Sans TC", sans-serif';
+      lctx.font = 'bold 36px "Noto Sans TC", sans-serif';
       lctx.textAlign = 'center';
       lctx.textBaseline = 'middle';
-      lctx.fillText('🎖️ 老兵傑克（靠近語音對話）', 256, 64);
-
+      lctx.fillText(text, 256, 64);
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(labelCanvas), transparent: true })
       );
       sprite.position.set(0, 2.95, 0);
-      sprite.scale.set(2.8, 0.7, 1);
-      npcGroup.add(sprite);
-
-      // 地面互動範圍提示光圈（讓玩家清楚看見語音觸發範圍）
-      const ringGeo = new THREE.RingGeometry(NPC_INTERACT_DISTANCE - 0.12, NPC_INTERACT_DISTANCE, 48);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: 0x38bdf8,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.35
-      });
-      const rangeRing = new THREE.Mesh(ringGeo, ringMat);
-      rangeRing.rotation.x = -Math.PI / 2;
-      rangeRing.position.y = 0.025;
-      npcGroup.add(rangeRing);
+      sprite.scale.set(2.9, 0.72, 1);
+      return sprite;
     }
 
-    buildNpcCharacter();
+    function createHumanoid(cfg) {
+      const group = new THREE.Group();
+      group.position.set(cfg.x, 0, cfg.z);
+      scene.add(group);
+      wallColliders.push({
+        minX: cfg.x - 0.45,
+        maxX: cfg.x + 0.45,
+        minZ: cfg.z - 0.45,
+        maxZ: cfg.z + 0.45
+      });
+
+      const skinMat = new THREE.MeshStandardMaterial({ color: cfg.skin, roughness: 0.7 });
+      const clothMat = new THREE.MeshStandardMaterial({ color: cfg.cloth, roughness: 0.75 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: cfg.pants, roughness: 0.85 });
+      const accentMat = new THREE.MeshStandardMaterial({ color: cfg.accent, roughness: 0.6 });
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+
+      const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.28), pantsMat);
+      leftLeg.position.set(-0.17, 0.375, 0);
+      leftLeg.castShadow = true;
+      group.add(leftLeg);
+      const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.28), pantsMat);
+      rightLeg.position.set(0.17, 0.375, 0);
+      rightLeg.castShadow = true;
+      group.add(rightLeg);
+
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.82, 0.38), clothMat);
+      torso.position.set(0, 1.16, 0);
+      torso.castShadow = true;
+      group.add(torso);
+
+      const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), skinMat);
+      leftArm.position.set(-0.46, 1.14, 0);
+      leftArm.castShadow = true;
+      group.add(leftArm);
+      const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), skinMat);
+      rightArm.position.set(0.46, 1.14, 0);
+      rightArm.castShadow = true;
+      group.add(rightArm);
+
+      const headGroup = new THREE.Group();
+      headGroup.position.set(0, 1.78, 0);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
+      head.castShadow = true;
+      headGroup.add(head);
+      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.05), darkMat);
+      eyeL.position.set(-0.1, 0.04, 0.22);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.1;
+      headGroup.add(eyeL, eyeR);
+
+      if (cfg.hat === 'beret') {
+        const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.14, 12), accentMat);
+        beret.position.set(0.03, 0.25, 0);
+        beret.rotation.z = -0.15;
+        headGroup.add(beret);
+      } else if (cfg.hat === 'cap') {
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.1, 12), accentMat);
+        cap.position.set(0, 0.26, 0);
+        const brim = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.16), accentMat);
+        brim.position.set(0, 0.2, 0.22);
+        headGroup.add(cap, brim);
+      } else if (cfg.hat === 'hood') {
+        const hood = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.5), accentMat);
+        hood.position.set(0, 0.22, -0.02);
+        headGroup.add(hood);
+      } else if (cfg.hat === 'hair') {
+        const hair = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.16, 0.48), accentMat);
+        hair.position.set(0, 0.26, 0);
+        headGroup.add(hair);
+      } else if (cfg.hat === 'bun') {
+        const bun = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), accentMat);
+        bun.position.set(0, 0.32, -0.08);
+        headGroup.add(bun);
+      }
+      group.add(headGroup);
+
+      const indicator = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.16, 0),
+        new THREE.MeshStandardMaterial({ color: cfg.marker, emissive: cfg.marker, emissiveIntensity: 0.65 })
+      );
+      indicator.position.set(0, 2.45, 0);
+      group.add(indicator);
+      group.add(createNameSprite(`${cfg.emoji} ${cfg.name}`, cfg.accentCss));
+
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(NPC_INTERACT_DISTANCE - 0.12, NPC_INTERACT_DISTANCE, 40),
+        new THREE.MeshBasicMaterial({ color: cfg.marker, side: THREE.DoubleSide, transparent: true, opacity: 0.28 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.03;
+      group.add(ring);
+
+      const record = {
+        ...cfg,
+        group,
+        headGroup,
+        indicator,
+        near: false,
+        wasNear: false,
+        nextAutoAt: 0,
+        phase: Math.random() * Math.PI * 2
+      };
+      characters.push(record);
+      return record;
+    }
+
+    function createCritter(kind, x, z, color) {
+      const group = new THREE.Group();
+      const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.78 });
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.7 });
+      const bodyW = kind === 'cat' ? 0.46 : 0.62;
+      const bodyH = kind === 'cat' ? 0.3 : 0.38;
+      const bodyD = kind === 'cat' ? 0.82 : 1.05;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(bodyW, bodyH, bodyD), bodyMat);
+      body.position.y = kind === 'cat' ? 0.36 : 0.46;
+      body.castShadow = true;
+      group.add(body);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.28), bodyMat);
+      head.position.set(0, body.position.y + 0.16, bodyD * 0.48);
+      head.castShadow = true;
+      group.add(head);
+
+      if (kind === 'cat') {
+        const earGeo = new THREE.ConeGeometry(0.07, 0.16, 4);
+        const earL = new THREE.Mesh(earGeo, bodyMat);
+        earL.position.set(-0.08, head.position.y + 0.18, head.position.z);
+        const earR = earL.clone();
+        earR.position.x = 0.08;
+        group.add(earL, earR);
+      } else {
+        const snout = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.14), darkMat);
+        snout.position.set(0, head.position.y - 0.05, head.position.z + 0.16);
+        group.add(snout);
+      }
+
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.04), darkMat);
+      eye.position.set(-0.07, head.position.y + 0.02, head.position.z + 0.14);
+      const eye2 = eye.clone();
+      eye2.position.x = 0.07;
+      group.add(eye, eye2);
+
+      const legGeo = new THREE.BoxGeometry(0.1, 0.26, 0.1);
+      const legL = new THREE.Mesh(legGeo, darkMat);
+      legL.position.set(-0.14, 0.13, 0.2);
+      const legR = new THREE.Mesh(legGeo, darkMat);
+      legR.position.set(0.14, 0.13, 0.2);
+      const legBL = new THREE.Mesh(legGeo, darkMat);
+      legBL.position.set(-0.14, 0.13, -0.22);
+      const legBR = new THREE.Mesh(legGeo, darkMat);
+      legBR.position.set(0.14, 0.13, -0.22);
+      group.add(legL, legR, legBL, legBR);
+
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, kind === 'cat' ? 0.48 : 0.3), bodyMat);
+      tail.position.set(0, body.position.y + 0.08, -bodyD * 0.62);
+      group.add(tail);
+
+      group.position.set(x, 0, z);
+      scene.add(group);
+      animals.push({
+        mesh: group,
+        kind,
+        legL,
+        legR,
+        legBL,
+        legBR,
+        tail,
+        state: 'wait',
+        timer: Math.random() * 1.4,
+        speed: 0,
+        dirX: 0,
+        dirZ: 1,
+        phase: Math.random() * 6
+      });
+    }
+
+    function updateAnimals(dt) {
+      for (const animal of animals) {
+        animal.timer -= dt;
+        if (animal.timer <= 0) {
+          if (animal.state === 'move') {
+            animal.state = 'wait';
+            animal.speed = 0;
+            animal.timer = 0.35 + Math.random() * 1.3;
+          } else {
+            const ang = Math.random() * Math.PI * 2;
+            animal.dirX = Math.sin(ang);
+            animal.dirZ = Math.cos(ang);
+            animal.speed = animal.kind === 'cat'
+              ? 2.1 + Math.random() * 1.6
+              : 1.5 + Math.random() * 1.7;
+            animal.state = 'move';
+            animal.timer = 1.1 + Math.random() * 2.3;
+          }
+        }
+
+        if (animal.state === 'move') {
+          const nx = animal.mesh.position.x + animal.dirX * animal.speed * dt;
+          const nz = animal.mesh.position.z + animal.dirZ * animal.speed * dt;
+          if (!isCollidingWithWorld(nx, nz, 0.32)) {
+            animal.mesh.position.x = nx;
+            animal.mesh.position.z = nz;
+            animal.mesh.rotation.y = Math.atan2(animal.dirX, animal.dirZ);
+          } else {
+            animal.timer = 0;
+          }
+          animal.phase += dt * Math.max(animal.speed, 1) * 7;
+          const swing = Math.sin(animal.phase) * 0.7;
+          animal.legL.rotation.x = swing;
+          animal.legR.rotation.x = -swing;
+          animal.legBL.rotation.x = -swing;
+          animal.legBR.rotation.x = swing;
+          animal.tail.rotation.y = Math.sin(animal.phase * 0.65) * 0.5;
+        }
+      }
+    }
+
+    createHumanoid({
+      id: 'jack',
+      name: '老兵傑克',
+      emoji: '🎖️',
+      x: NPC_POS.x,
+      z: NPC_POS.z,
+      skin: 0xfdba74,
+      cloth: 0x1e3a8a,
+      pants: 0x334155,
+      accent: 0xb91c1c,
+      accentCss: '#38bdf8',
+      marker: 0x38bdf8,
+      hat: 'beret',
+      voice: 'Charon',
+      style: 'steady, warm veteran soldier speaking natural Taiwanese Mandarin',
+      persona: '前哨站駐守老兵，身經百戰、爽朗幽默，說話俐落有軍人風範。木屋是他的哨站。'
+    });
+    createHumanoid({
+      id: 'lin',
+      name: '醫護兵林可',
+      emoji: '🩹',
+      x: settlementSpots.clinic.x,
+      z: settlementSpots.clinic.z,
+      skin: 0xfcd9b8,
+      cloth: 0xccfbf1,
+      pants: 0x115e59,
+      accent: 0x0f766e,
+      accentCss: '#5eead4',
+      marker: 0x14b8a6,
+      hat: 'cap',
+      voice: 'Kore',
+      style: 'gentle, clear female medic speaking natural Taiwanese Mandarin',
+      persona: '醫務站的護理兵，語氣溫柔但很專業，會提醒玩家休息、補水，也會吐槽他們又去招惹紅色方塊。'
+    });
+    createHumanoid({
+      id: 'tou',
+      name: '情報員阿透',
+      emoji: '📡',
+      x: settlementSpots.radio.x,
+      z: settlementSpots.radio.z,
+      skin: 0xe7c8a0,
+      cloth: 0x312e81,
+      pants: 0x1e1b4b,
+      accent: 0x312e81,
+      accentCss: '#a5b4fc',
+      marker: 0x818cf8,
+      hat: 'hood',
+      voice: 'Fenrir',
+      style: 'low, secretive scout speaking natural Taiwanese Mandarin',
+      persona: '無線電站的情報員，說話壓低聲音、喜歡用「我剛截到一段訊號」開頭，消息半真半假但聽起來合理。'
+    });
+    createHumanoid({
+      id: 'mai',
+      name: '工程師小麥',
+      emoji: '🔧',
+      x: settlementSpots.warehouse.x,
+      z: settlementSpots.warehouse.z,
+      skin: 0xf6c89f,
+      cloth: 0xfacc15,
+      pants: 0x44403c,
+      accent: 0xf59e0b,
+      accentCss: '#fde047',
+      marker: 0xeab308,
+      hat: 'hair',
+      voice: 'Puck',
+      style: 'bright, energetic young engineer speaking natural Taiwanese Mandarin',
+      persona: '補給倉庫的工程師，講話快、愛講槍枝跟工具，會抱怨零件不夠又立刻想出土辦法。'
+    });
+    createHumanoid({
+      id: 'chen',
+      name: '補給商陳姐',
+      emoji: '🧰',
+      x: settlementSpots.post.x,
+      z: settlementSpots.post.z,
+      skin: 0xf0c29a,
+      cloth: 0xf97316,
+      pants: 0x7c2d12,
+      accent: 0x9a3412,
+      accentCss: '#fdba74',
+      marker: 0xf97316,
+      hat: 'bun',
+      voice: 'Aoede',
+      style: 'brisk, warm market auntie speaking natural Taiwanese Mandarin',
+      persona: '東哨所的補給商，嗓門爽脆、愛殺價也愛請客，會用生活口吻聊貓狗、彈藥物資和今天的天氣。'
+    });
+
+    createCritter('cat', 8, 8, 0xf59e0b);
+    createCritter('dog', -5, 14, 0xa16207);
+    createCritter('dog', 12, 5, 0xe7e5e4);
 
     // =========================================================================
     // 7. 建立標靶與巡邏敵人方塊、粒子特效與射擊判定
@@ -1565,7 +1859,7 @@
       if (e.code === 'Space') tryJump();
 
       // 支援按 [E] 鍵直接觸發右下角 NPC 錄音開關按鈕（免解鎖滑鼠也能測語音）
-      if (e.code === 'KeyE' && isNearNpc && !npcTalkBtn.disabled) {
+      if (e.code === 'KeyE' && focusNpc && !npcTalkBtn.disabled) {
         npcTalkBtn.click();
       }
     });
@@ -1945,11 +2239,16 @@
 
       if (isProcessingVoice) return;
 
+      autoTalkToken += 1;
+      autoTalkBusy = false;
+      pendingAutoNpc = null;
+
       // 若 NPC 正在播放上一段語音，點擊新對話時先停止舊語音
       if (activeVoiceAudio) {
         activeVoiceAudio.pause();
         activeVoiceAudio = null;
         isNpcSpeaking = false;
+        speakingNpc = null;
       }
 
       if (!isRecording) {
@@ -2023,7 +2322,8 @@
         isRecording = true;
         npcTalkBtn.textContent = '⏹️ 錄音中... 點擊停止';
         npcTalkBtn.classList.add('recording');
-        setVoiceStatus('recording', '狀態：🔴 錄音中... 請對著麥克風向「老兵傑克」說話');
+        const speakerName = (focusNpc && focusNpc.name) || '角色';
+        setVoiceStatus('recording', `狀態：🔴 錄音中... 請對著麥克風向「${speakerName}」說話`);
       } catch (err) {
         setVoiceStatus('error', `狀態：❌ 錯誤訊息 — 無法存取麥克風：${err.message}`);
         resetTalkButtonUI();
@@ -2050,7 +2350,7 @@
       isProcessingVoice = false;
       npcTalkBtn.disabled = false;
       npcTalkBtn.classList.remove('recording');
-      npcTalkBtn.textContent = '🎤 與 NPC 對話';
+      npcTalkBtn.textContent = focusNpc ? `🎤 與${focusNpc.name}對話` : '🎤 與 NPC 對話';
     }
 
     /**
@@ -2079,21 +2379,22 @@
       const chatModel = chatModelSelect.value;
       const ttsModel = ttsModelSelect.value;
 
+      const speaker = focusNpc || characters[0];
       try {
         setVoiceStatus('processing', `狀態：⏳ 上傳辨識與生成語音中（1/2 ${chatModel} 聽取語音中...）`);
         const base64Audio = await blobToBase64(audioBlob);
 
-        // 整理最近 4 輪對話歷史供 NPC 參考
         const recentHistoryText = npcChatHistory.length
-          ? '\n近期對話紀錄：\n' + npcChatHistory.slice(-4).map((h) => `玩家：${h.user}\n傑克：${h.npc}`).join('\n')
+          ? '\n近期對話紀錄：\n' + npcChatHistory.slice(-4).map((h) => `玩家：${h.user}\n${h.npcName || speaker.name}：${h.npc}`).join('\n')
           : '';
 
         const systemPrompt = [
-          '你是 3D 射擊前哨站木屋旁的駐守 NPC「老兵傑克」（Veteran Jack）。',
-          '性格設定：身經百戰、爽朗幽默、說話俐落有軍人風範，使用自然道地的台灣繁體中文口語。',
-          `目前玩家戰績：得分 ${score} 分，已擊破 ${totalKills} 個敵人方塊。木屋內有補給桌，四周有練習標靶與巡邏紅色敵方方塊。`,
+          `你是 3D 射擊前哨站的角色「${speaker.name}」。`,
+          speaker.persona,
+          '使用自然道地的台灣繁體中文口語。',
+          `目前玩家戰績：得分 ${score} 分，已擊破 ${totalKills} 個敵人方塊。場景有木屋、醫務站、無線電站、補給倉庫、東哨所、練習標靶、紅色敵人方塊、一隻橘貓與兩隻狗。`,
           '請聽取玩家的錄音內容，依角色語氣直接回答（控制在 1 到 3 句話、約 20～65 字內，適合直接語音朗讀，勿加星號或舞台動作括號）。',
-          '請嚴格輸出 JSON 格式：{"transcript":"玩家說的話轉錄","reply":"老兵傑克的口語回答","style":"steady, warm veteran soldier speaking natural Taiwanese Mandarin"}',
+          `請嚴格輸出 JSON 格式：{"transcript":"玩家說的話轉錄","reply":"${speaker.name}的口語回答","style":"${speaker.style}"}`,
           recentHistoryText
         ].join('\n');
 
@@ -2114,7 +2415,7 @@
                 role: 'user',
                 parts: [
                   { inlineData: { mimeType, data: base64Audio } },
-                  { text: '請辨識這段語音並以老兵傑克的身分回覆 JSON。' }
+                  { text: `請辨識這段語音並以${speaker.name}的身分回覆 JSON。` }
                 ]
               }
             ],
@@ -2135,7 +2436,7 @@
           .join('')
           .trim();
 
-        let parsed = { transcript: '（語音輸入）', reply: '', style: 'steady, warm veteran soldier' };
+        let parsed = { transcript: '（語音輸入）', reply: '', style: speaker.style };
         try {
           parsed = JSON.parse(rawJsonText);
         } catch (_) {
@@ -2144,21 +2445,19 @@
 
         const userTranscript = parsed.transcript || '（語音訊息）';
         const npcReplyText = parsed.reply || '聽不太清楚，通訊有點雜訊，再跟我說一次吧！';
-        const voiceStyle = parsed.style || 'steady, warm veteran soldier';
+        const voiceStyle = parsed.style || speaker.style;
 
-        // 記錄對話歷史並更新畫面字幕
-        npcChatHistory.push({ user: userTranscript, npc: npcReplyText });
+        npcChatHistory.push({ user: userTranscript, npc: npcReplyText, npcName: speaker.name });
         dialogueUserEl.textContent = `🗣️ 你說：「${userTranscript}」`;
-        dialogueNpcEl.innerHTML = `<strong>🎖️ 老兵傑克：</strong>「${npcReplyText}」`;
+        dialogueNpcEl.innerHTML = `<strong>${speaker.emoji} ${speaker.name}：</strong>「${npcReplyText}」`;
         dialogueBox.classList.add('visible');
 
-        // 步驟 2：呼叫 Gemini 3 TTS 模型將回覆合成為語音
+        speakingNpc = speaker;
         setVoiceStatus('processing', `狀態：⏳ 上傳辨識與生成語音中（2/2 ${ttsModel} 合成語音中...）`);
-        const audioResult = await requestGemini3TtsAudio(apiKey, ttsModel, npcReplyText, voiceStyle);
+        const audioResult = await requestGemini3TtsAudio(apiKey, ttsModel, npcReplyText, voiceStyle, speaker.voice);
 
-        // 收到語音後立刻自動播放
         resetTalkButtonUI();
-        await playBase64NpcAudio(audioResult.base64Data, audioResult.mimeType);
+        await playBase64NpcAudio(audioResult.base64Data, audioResult.mimeType, `${speaker.emoji} ${speaker.name}`);
       } catch (err) {
         console.error('Gemini 3 語音互動錯誤：', err);
         resetTalkButtonUI();
@@ -2169,7 +2468,7 @@
     /**
      * 呼叫 Gemini 3 TTS 系列模型取得 Base64 語音（同時相容 Gemini 3.8 TTS 與 3.1 TTS 架構）
      */
-    async function requestGemini3TtsAudio(apiKey, ttsModel, textToSpeak, styleHint) {
+    async function requestGemini3TtsAudio(apiKey, ttsModel, textToSpeak, styleHint, voiceName = 'Charon') {
       const is38Tts = ttsModel.includes('3.8');
       const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(ttsModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
@@ -2190,7 +2489,7 @@
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: {
-                voiceConfig: { voice: 'Charon' } // 深沉穩重的男聲預建聲線
+                voiceConfig: { voice: voiceName }
               }
             }
           }
@@ -2205,7 +2504,7 @@
               responseModalities: ['AUDIO'],
               speechConfig: {
                 voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: 'Charon' }
+                  prebuiltVoiceConfig: { voiceName }
                 }
               }
             }
@@ -2258,7 +2557,7 @@
               ],
               response_format: { type: 'audio' },
               generation_config: {
-                speech_config: [{ voice: 'Charon' }]
+                speech_config: [{ voice: voiceName }]
               },
               store: false
             })
@@ -2325,7 +2624,7 @@
     /**
      * 解碼 Base64 音訊（自動判別 WAV / MP3 / OGG 或 Raw PCM）並立即自動播放
      */
-    async function playBase64NpcAudio(base64Data, mimeType = '') {
+    async function playBase64NpcAudio(base64Data, mimeType = '', speakerName = '角色') {
       const binaryStr = atob(base64Data);
       const bytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) {
@@ -2364,24 +2663,130 @@
       activeVoiceAudio = audio;
       isNpcSpeaking = true;
 
-      setVoiceStatus('playing', '狀態：🔊 播放中 — 老兵傑克正在語音回覆...');
+      setVoiceStatus('playing', `狀態：🔊 播放中 — ${speakerName} 正在說話...`);
 
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
         if (activeVoiceAudio === audio) {
           activeVoiceAudio = null;
           isNpcSpeaking = false;
-          setVoiceStatus('idle', '狀態：✅ 語音播放完畢（靠近 NPC 可再次點擊對話）');
+          speakingNpc = null;
+          setVoiceStatus('idle', '狀態：✅ 語音播放完畢（再靠近角色會再次自動打招呼）');
+          flushPendingAutoTalk();
         }
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(audioUrl);
         isNpcSpeaking = false;
+        speakingNpc = null;
         setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 瀏覽器播放合成語音失敗');
+        flushPendingAutoTalk();
       };
 
       await audio.play();
+    }
+
+    function flushPendingAutoTalk() {
+      if (!pendingAutoNpc || !pendingAutoNpc.near) {
+        pendingAutoNpc = null;
+        return;
+      }
+      const npc = pendingAutoNpc;
+      pendingAutoNpc = null;
+      requestAutoTalk(npc);
+    }
+
+    function requestAutoTalk(npc) {
+      if (!npc || performance.now() < npc.nextAutoAt) return;
+      if (autoTalkBusy || isRecording || isProcessingVoice || isNpcSpeaking) {
+        pendingAutoNpc = npc;
+        return;
+      }
+      npc.nextAutoAt = performance.now() + 26000;
+      runAutoTalk(npc);
+    }
+
+    async function runAutoTalk(npc) {
+      const token = ++autoTalkToken;
+      autoTalkBusy = true;
+      speakingNpc = npc;
+      const apiKey = (apiKeyInput.value.trim() || localStorage.getItem(STORAGE_KEY_API) || '').trim();
+      if (!apiKey) {
+        autoTalkBusy = false;
+        speakingNpc = null;
+        setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 請先在右上角輸入並儲存 GEMINI_API_KEY，角色才能自動說話');
+        apiKeyInput.focus();
+        return;
+      }
+
+      try {
+        ensureAudioContext();
+        const chatModel = chatModelSelect.value;
+        const ttsModel = ttsModelSelect.value;
+        setVoiceStatus('processing', `狀態：⏳ ${npc.name} 正在想招呼語（${chatModel}）...`);
+        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chatModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const prompt = [
+          `你是 3D 射擊前哨站的角色「${npc.name}」。`,
+          npc.persona,
+          '玩家剛走到你身邊，請主動用台灣繁體中文打招呼。',
+          '內容要像這個人當下會說的話，可以提到木屋、醫務站、無線電站、補給倉庫、東哨所、練習標靶、紅色敵人方塊、橘貓或兩隻狗。',
+          `玩家目前得分 ${score}，擊破 ${totalKills}。每次說法不要重複同一句。`,
+          '只講 1 到 2 句，25 到 55 字，不要星號、不要括號動作。',
+          `嚴格輸出 JSON：{"reply":"台詞","style":"${npc.style}"}`
+        ].join('\n');
+
+        const chatRes = await fetch(chatUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 1.15,
+              thinkingConfig: { thinkingLevel: 'LOW' }
+            }
+          })
+        });
+        const chatData = await chatRes.json();
+        if (!chatRes.ok) {
+          throw new Error(chatData?.error?.message || `招呼語生成失敗 (HTTP ${chatRes.status})`);
+        }
+        if (token !== autoTalkToken) return;
+
+        const raw = (chatData?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+        let reply = '';
+        let style = npc.style;
+        try {
+          const parsed = JSON.parse(raw);
+          reply = parsed.reply || '';
+          style = parsed.style || npc.style;
+        } catch (_) {
+          reply = raw;
+        }
+        if (!reply) reply = `${npc.name}點點頭：前哨站今天還算平靜，看到橘貓跟狗就別踩到牠們。`;
+
+        dialogueUserEl.textContent = '（走近後自動打招呼）';
+        dialogueNpcEl.innerHTML = `<strong>${npc.emoji} ${npc.name}：</strong>「${reply}」`;
+        dialogueBox.classList.add('visible');
+
+        setVoiceStatus('processing', `狀態：⏳ ${ttsModel} 正在合成 ${npc.name} 的語音...`);
+        const audioResult = await requestGemini3TtsAudio(apiKey, ttsModel, reply, style, npc.voice);
+        if (token !== autoTalkToken) return;
+        await playBase64NpcAudio(audioResult.base64Data, audioResult.mimeType, `${npc.emoji} ${npc.name}`);
+      } catch (err) {
+        console.error('自動打招呼錯誤：', err);
+        if (token === autoTalkToken) {
+          isNpcSpeaking = false;
+          speakingNpc = null;
+          setVoiceStatus('error', `狀態：❌ 錯誤訊息 — ${err.message}`);
+        }
+      } finally {
+        if (token === autoTalkToken) autoTalkBusy = false;
+      }
     }
 
     // =========================================================================
@@ -2496,39 +2901,62 @@
         }
       }
 
-      // 5. 偵測主角與 NPC 的水平距離，顯示或隱藏「與 NPC 對話」按鈕
-      const distToNpc = Math.hypot(playerPos.x - NPC_POS.x, playerPos.z - NPC_POS.z);
-      const nowNear = distToNpc <= NPC_INTERACT_DISTANCE;
+      // 5. 靠近任一角色：顯示對話按鈕，並自動生成招呼語再以 Gemini TTS 播放
+      updateAnimals(dt);
+
+      let nearest = null;
+      let nearestDist = Infinity;
+      for (const npc of characters) {
+        const dist = Math.hypot(playerPos.x - npc.group.position.x, playerPos.z - npc.group.position.z);
+        const nowNear = dist <= NPC_INTERACT_DISTANCE;
+        if (nowNear && dist < nearestDist) {
+          nearest = npc;
+          nearestDist = dist;
+        }
+        if (nowNear && !npc.wasNear) {
+          npc.wasNear = true;
+          requestAutoTalk(npc);
+        } else if (!nowNear && npc.wasNear) {
+          npc.wasNear = false;
+          if (pendingAutoNpc === npc) pendingAutoNpc = null;
+        }
+        npc.near = nowNear;
+
+        if (nowNear) {
+          npc.group.rotation.y = Math.atan2(
+            playerPos.x - npc.group.position.x,
+            playerPos.z - npc.group.position.z
+          );
+        }
+        const speaking = speakingNpc === npc && isNpcSpeaking;
+        npc.indicator.rotation.y += dt * (speaking ? 6 : 2);
+        npc.indicator.position.y = 2.45 + Math.sin(elapsed * 3.5 + npc.phase) * 0.08;
+        npc.headGroup.rotation.x = speaking ? Math.sin(elapsed * 18) * 0.12 : 0;
+      }
+
+      const nowNear = !!nearest;
+      if (nearest !== focusNpc) {
+        focusNpc = nearest;
+        if (focusNpc && !isRecording && !isProcessingVoice) {
+          npcTalkBtn.textContent = `🎤 與${focusNpc.name}對話`;
+        }
+      }
 
       if (nowNear !== isNearNpc) {
         isNearNpc = nowNear;
         if (isNearNpc) {
           npcInteractContainer.classList.add('visible');
           if (!isRecording && !isProcessingVoice && !isNpcSpeaking) {
-            setVoiceStatus('idle', '狀態：已進入互動範圍 — 點擊右下角「與 NPC 對話」（或按 E 鍵）開始錄音');
+            setVoiceStatus('idle', `狀態：已靠近${focusNpc.name} — 正在準備自動打招呼，也可按 E 錄音`);
           }
         } else {
-          // 離開範圍時隱藏按鈕（若正在錄音中離開，安全停止錄音）
           npcInteractContainer.classList.remove('visible');
           if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
             stopMicRecordingAndSend();
           } else if (!isProcessingVoice && !isNpcSpeaking) {
-            setVoiceStatus('idle', '狀態：待機中（靠近木屋旁的「老兵傑克」即可語音對話）');
+            setVoiceStatus('idle', '狀態：待機中（靠近任一角色會自動打招呼）');
           }
         }
-      }
-
-      // NPC 面向玩家與說話時的生動動態
-      if (isNearNpc) {
-        const angleToPlayer = Math.atan2(playerPos.x - NPC_POS.x, playerPos.z - NPC_POS.z);
-        npcGroup.rotation.y = angleToPlayer;
-      }
-      if (npcTalkIndicator) {
-        npcTalkIndicator.rotation.y += dt * (isNpcSpeaking ? 6.0 : 2.0);
-        npcTalkIndicator.position.y = 2.45 + Math.sin(elapsed * 3.5) * 0.08;
-      }
-      if (npcHeadGroup) {
-        npcHeadGroup.rotation.x = isNpcSpeaking ? Math.sin(elapsed * 18) * 0.12 : 0;
       }
 
       renderer.render(scene, camera);
