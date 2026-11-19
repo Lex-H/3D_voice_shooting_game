@@ -1,0 +1,2066 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D 前哨站射擊原型 — Gemini 3 語音互動整合</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      overflow: hidden;
+      font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+      background: #111827;
+      color: #f9fafb;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* ================= 左上角：計分與操作說明 HUD ================= */
+    #hud-top-left {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .hud-card {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 12px;
+      padding: 12px 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    .score-board {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .score-value {
+      color: #fbbf24;
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kills-value {
+      color: #38bdf8;
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .controls-guide {
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: #cbd5e1;
+    }
+
+    .controls-guide kbd {
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: monospace;
+      color: #f8fafc;
+      font-size: 11.5px;
+    }
+
+    .lock-badge {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+
+    .lock-badge.locked {
+      background: rgba(16, 185, 129, 0.22);
+      color: #6ee7b7;
+      border: 1px solid rgba(16, 185, 129, 0.45);
+    }
+
+    .lock-badge.unlocked {
+      background: rgba(245, 158, 11, 0.22);
+      color: #fcd34d;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+    }
+
+    /* ================= 右上角：Gemini API 設定面板 ================= */
+    #settings-panel {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 30;
+      width: 320px;
+      background: rgba(15, 23, 42, 0.86);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+    }
+
+    .settings-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 10px;
+    }
+
+    .key-status-dot {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .key-status-dot.saved {
+      background: rgba(16, 185, 129, 0.2);
+      color: #6ee7b7;
+    }
+
+    .key-status-dot.empty {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    #api-key-input {
+      flex: 1;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 8px;
+      padding: 7px 10px;
+      color: #f8fafc;
+      font-size: 13px;
+      outline: none;
+      user-select: text;
+    }
+
+    #api-key-input:focus {
+      border-color: #38bdf8;
+    }
+
+    .btn-small {
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-small:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-small:active {
+      transform: scale(0.97);
+    }
+
+    .btn-secondary {
+      background: rgba(71, 85, 105, 0.75);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(100, 116, 139, 0.9);
+    }
+
+    .model-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .model-field label {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 3px;
+    }
+
+    .model-field select {
+      width: 100%;
+      background: rgba(30, 41, 59, 0.9);
+      color: #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 6px;
+      padding: 5px 6px;
+      font-size: 11.5px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* ================= 螢幕中央：準星與命中回饋 ================= */
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 24px;
+      height: 24px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 15;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+    }
+
+    /* 水平線 */
+    #crosshair::before {
+      top: 11px;
+      left: 2px;
+      width: 20px;
+      height: 2px;
+    }
+
+    /* 垂直線 */
+    #crosshair::after {
+      left: 11px;
+      top: 2px;
+      width: 2px;
+      height: 20px;
+    }
+
+    /* 命中紅叉回饋 */
+    #hit-marker {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.7);
+      font-size: 24px;
+      font-weight: 900;
+      color: #ef4444;
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.9);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 16;
+      transition: opacity 0.08s ease, transform 0.08s ease;
+    }
+
+    #hit-marker.active {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.15);
+    }
+
+    #hit-feedback-text {
+      position: fixed;
+      top: calc(50% - 42px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 15px;
+      font-weight: 800;
+      color: #fde047;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 16;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    #hit-feedback-text.show {
+      opacity: 1;
+      transform: translate(-50%, -8px);
+    }
+
+    /* ================= 底部中央：語音狀態列與對話字幕 ================= */
+    #bottom-hud {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: min(620px, 90vw);
+      pointer-events: none;
+    }
+
+    #dialogue-box {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+      display: none;
+    }
+
+    #dialogue-box.visible {
+      display: block;
+    }
+
+    .dialogue-user {
+      color: #94a3b8;
+      font-size: 12.5px;
+      margin-bottom: 4px;
+    }
+
+    .dialogue-npc {
+      color: #f8fafc;
+      font-weight: 600;
+    }
+
+    .dialogue-npc strong {
+      color: #38bdf8;
+    }
+
+    #status-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 13.5px;
+      font-weight: 700;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    #status-bar.state-idle {
+      color: #cbd5e1;
+      border-color: rgba(148, 163, 184, 0.35);
+    }
+
+    #status-bar.state-recording {
+      color: #fecaca;
+      background: rgba(127, 29, 29, 0.88);
+      border-color: #ef4444;
+      animation: pulseRed 1.2s infinite;
+    }
+
+    #status-bar.state-processing {
+      color: #fef08a;
+      background: rgba(113, 63, 18, 0.88);
+      border-color: #f59e0b;
+    }
+
+    #status-bar.state-playing {
+      color: #a7f3d0;
+      background: rgba(6, 78, 59, 0.88);
+      border-color: #10b981;
+    }
+
+    #status-bar.state-error {
+      color: #fecaca;
+      background: rgba(153, 27, 27, 0.92);
+      border-color: #f87171;
+    }
+
+    /* ================= 右下角：靠近 NPC 互動與錄音按鈕 ================= */
+    #npc-interact-container {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 30;
+      display: none; /* 離開範圍時隱藏 */
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    #npc-interact-container.visible {
+      display: flex;
+      animation: popIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #npc-talk-btn {
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border: 2px solid rgba(186, 230, 253, 0.6);
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(37, 99, 235, 0.45);
+      transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    #npc-talk-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 30px rgba(37, 99, 235, 0.6);
+    }
+
+    #npc-talk-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    #npc-talk-btn.recording {
+      background: linear-gradient(135deg, #dc2626, #991b1b);
+      border-color: #fca5a5;
+      box-shadow: 0 10px 25px rgba(220, 38, 38, 0.6);
+      animation: pulseRed 1.2s infinite;
+    }
+
+    #npc-talk-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
+    .npc-btn-hint {
+      font-size: 12px;
+      color: #e2e8f0;
+      background: rgba(15, 23, 42, 0.78);
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    @keyframes pulseRed {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.65); }
+      50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    }
+
+    @keyframes popIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+  </style>
+
+  <!-- 使用 Import Map 從 CDN 引入 Three.js -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <!-- 左上角：分數與操作提示 -->
+  <div id="hud-top-left">
+    <div class="hud-card score-board">
+      <div>🎯 得分：<span id="score-el" class="score-value">0</span></div>
+      <div>💥 擊破：<span id="kills-el" class="kills-value">0</span></div>
+    </div>
+    <div class="hud-card controls-guide">
+      <div><kbd>點擊畫面</kbd> 鎖定視角與滑鼠左鍵射擊</div>
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動角色 ｜ <kbd>Space</kbd> 跳躍</div>
+      <div><kbd>←</kbd><kbd>→</kbd> 輔助轉向 ｜ <kbd>ESC</kbd> 釋放滑鼠游標</div>
+      <div>靠近木屋旁 NPC 可點擊右下角按鈕（或按 <kbd>E</kbd>）語音對話</div>
+      <div id="pointer-status" class="lock-badge unlocked">視角未鎖定（點擊 3D 畫面鎖定準星）</div>
+    </div>
+  </div>
+
+  <!-- 右上角：Gemini API Key 與模型設定 -->
+  <div id="settings-panel">
+    <div class="settings-header">
+      <span>⚙️ Gemini 3 語音設定</span>
+      <span id="key-badge" class="key-status-dot empty">未儲存金鑰</span>
+    </div>
+    <div class="input-row">
+      <input
+        id="api-key-input"
+        type="password"
+        placeholder="輸入 GEMINI_API_KEY..."
+        autocomplete="off"
+      />
+      <button id="toggle-key-vis-btn" class="btn-small btn-secondary" title="顯示/隱藏金鑰">👁️</button>
+      <button id="save-key-btn" class="btn-small">儲存</button>
+    </div>
+    <div class="model-row">
+      <div class="model-field">
+        <label for="chat-model-select">語音理解與對話 (Gemini 3)</label>
+        <select id="chat-model-select">
+          <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+          <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+          <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+        </select>
+      </div>
+      <div class="model-field">
+        <label for="tts-model-select">語音合成模型 (Gemini 3 TTS)</label>
+        <select id="tts-model-select">
+          <option value="gemini-3.8-flash-lite-tts">gemini-3.8-flash-lite-tts</option>
+          <option value="gemini-3.8-flash-tts">gemini-3.8-flash-tts</option>
+          <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中央準星與命中提示 -->
+  <div id="crosshair"></div>
+  <div id="hit-marker">✕</div>
+  <div id="hit-feedback-text">🎯 命中！</div>
+
+  <!-- 底部中央：對話字幕與目前語音狀態列 -->
+  <div id="bottom-hud">
+    <div id="dialogue-box">
+      <div id="dialogue-user-el" class="dialogue-user"></div>
+      <div id="dialogue-npc-el" class="dialogue-npc"></div>
+    </div>
+    <div id="status-bar" class="state-idle">
+      <span id="status-text">狀態：待機中（靠近木屋旁的「老兵傑克」即可語音對話）</span>
+    </div>
+  </div>
+
+  <!-- 右下角：靠近 NPC 時才顯示的對話/錄音開關按鈕 -->
+  <div id="npc-interact-container">
+    <button id="npc-talk-btn" type="button">🎤 與 NPC 對話</button>
+    <div class="npc-btn-hint">按 ESC 可釋放游標點擊按鈕，或直接按 [E] 鍵切換錄音</div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // =========================================================================
+    // 1. 全域常數與 DOM 元素參照
+    // =========================================================================
+    const STORAGE_KEY_API = 'GEMINI_API_KEY';
+    const NPC_INTERACT_DISTANCE = 4.8; // 觸發顯示對話按鈕的距離（公尺）
+    const PLAYER_HEIGHT = 1.7;         // 玩家眼睛高度
+    const PLAYER_RADIUS = 0.45;        // 玩家碰撞半徑
+
+    const scoreEl = document.getElementById('score-el');
+    const killsEl = document.getElementById('kills-el');
+    const pointerStatusEl = document.getElementById('pointer-status');
+    const hitMarkerEl = document.getElementById('hit-marker');
+    const hitFeedbackTextEl = document.getElementById('hit-feedback-text');
+
+    const apiKeyInput = document.getElementById('api-key-input');
+    const toggleKeyVisBtn = document.getElementById('toggle-key-vis-btn');
+    const saveKeyBtn = document.getElementById('save-key-btn');
+    const keyBadge = document.getElementById('key-badge');
+    const chatModelSelect = document.getElementById('chat-model-select');
+    const ttsModelSelect = document.getElementById('tts-model-select');
+
+    const npcInteractContainer = document.getElementById('npc-interact-container');
+    const npcTalkBtn = document.getElementById('npc-talk-btn');
+    const statusBar = document.getElementById('status-bar');
+    const statusText = document.getElementById('status-text');
+    const dialogueBox = document.getElementById('dialogue-box');
+    const dialogueUserEl = document.getElementById('dialogue-user-el');
+    const dialogueNpcEl = document.getElementById('dialogue-npc-el');
+
+    let score = 0;
+    let totalKills = 0;
+
+    // =========================================================================
+    // 2. API Key 存取管理（localStorage）與狀態列更新函式
+    // =========================================================================
+    function initApiKeyPanel() {
+      const savedKey = localStorage.getItem(STORAGE_KEY_API) || '';
+      if (savedKey) {
+        apiKeyInput.value = savedKey;
+        keyBadge.textContent = '已儲存金鑰';
+        keyBadge.className = 'key-status-dot saved';
+      }
+
+      saveKeyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const val = apiKeyInput.value.trim();
+        if (val) {
+          localStorage.setItem(STORAGE_KEY_API, val);
+          keyBadge.textContent = '已儲存金鑰';
+          keyBadge.className = 'key-status-dot saved';
+          setVoiceStatus('idle', '狀態：API Key 已儲存至本機 localStorage');
+        } else {
+          localStorage.removeItem(STORAGE_KEY_API);
+          keyBadge.textContent = '未儲存金鑰';
+          keyBadge.className = 'key-status-dot empty';
+          setVoiceStatus('idle', '狀態：已清除 API Key');
+        }
+      });
+
+      toggleKeyVisBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
+      });
+
+      // 避免點擊設定面板時觸發 3D 畫面鎖定或射擊
+      document.getElementById('settings-panel').addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+      });
+    }
+
+    /**
+     * 更新底部狀態列樣式與文字
+     * @param {'idle'|'recording'|'processing'|'playing'|'error'} mode
+     * @param {string} message
+     */
+    function setVoiceStatus(mode, message) {
+      statusBar.className = `state-${mode}`;
+      statusText.textContent = message;
+    }
+
+    initApiKeyPanel();
+
+    // =========================================================================
+    // 3. Web Audio API 音效合成器（射擊音效、命中音效與語音播放共用 AudioContext）
+    // =========================================================================
+    let audioCtx = null;
+    let activeVoiceAudio = null; // 追蹤目前正在播放的 NPC 語音物件
+
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // 合成雷射步槍射擊音效（不依賴外部音檔）
+    function playShootSfx() {
+      try {
+        const ctx = ensureAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(520, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(95, ctx.currentTime + 0.11);
+
+        gain.gain.setValueAtTime(0.14, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.11);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.11);
+      } catch (_) {
+        // 忽略尚未互動時的音效限制
+      }
+    }
+
+    // 合成命中標靶/敵人清脆回饋音
+    function playHitSfx(isKill = false) {
+      try {
+        const ctx = ensureAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(isKill ? 880 : 660, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(isKill ? 1320 : 920, ctx.currentTime + 0.09);
+
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      } catch (_) {}
+    }
+
+    // =========================================================================
+    // 4. 建立 Three.js 場景、天空、光影與戶外地面
+    // =========================================================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x7dd3fc);
+    scene.fog = new THREE.FogExp2(0xbae6fd, 0.014);
+
+    const camera = new THREE.PerspectiveCamera(
+      72,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      200
+    );
+    camera.rotation.order = 'YXZ'; // FPS 標準視角旋轉順序（先水平 Yaw 再垂直 Pitch）
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    // 環境半球光（天空藍光 + 草地反射暖光）
+    const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x4d7c0f, 0.75);
+    hemiLight.position.set(0, 30, 0);
+    scene.add(hemiLight);
+
+    // 太陽平行光與陰影設定
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.35);
+    sunLight.position.set(22, 34, 18);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 1;
+    sunLight.shadow.camera.far = 95;
+    const shadowBound = 36;
+    sunLight.shadow.camera.left = -shadowBound;
+    sunLight.shadow.camera.right = shadowBound;
+    sunLight.shadow.camera.top = shadowBound;
+    sunLight.shadow.camera.bottom = -shadowBound;
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    // 天空太陽圓盤與裝飾雲朵
+    function createSkyDecorations() {
+      const sunMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(3.2, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfef08a })
+      );
+      sunMesh.position.set(44, 65, 36);
+      scene.add(sunMesh);
+
+      const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+      const cloudCoords = [
+        [-25, 28, -30], [18, 32, -25], [-10, 30, 22], [30, 27, 12], [0, 34, -42]
+      ];
+      cloudCoords.forEach(([cx, cy, cz]) => {
+        const group = new THREE.Group();
+        for (let i = 0; i < 4; i++) {
+          const puff = new THREE.Mesh(new THREE.BoxGeometry(5 + i, 2.2, 4), cloudMat);
+          puff.position.set((i - 1.5) * 2.4, (i % 2) * 0.7, (i % 2) * 0.9);
+          group.add(puff);
+        }
+        group.position.set(cx, cy, cz);
+        scene.add(group);
+      });
+    }
+    createSkyDecorations();
+
+// 動態產生戶外草地格紋貼圖（讓角色移動時具備清晰的速度與空間感）
+    function createGrassTexture() {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 256;
+      const ctx = c.getContext('2d');
+
+      ctx.fillStyle = '#4d7c0f';
+      ctx.fillRect(0, 0, 256, 256);
+
+      // 繪製深淺交錯的草地細節
+      for (let i = 0; i < 900; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#3f6212' : '#65a30d';
+        const x = (i * 73) % 256;
+        const y = (i * 137) % 256;
+        ctx.fillRect(x, y, 3, 6);
+      }
+
+      // 輔助空間格線
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, 256, 256);
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(45, 45);
+      return tex;
+    }
+
+    // 建立戶外草地地面
+    const groundMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(140, 140),
+      new THREE.MeshStandardMaterial({
+        map: createGrassTexture(),
+        roughness: 0.92,
+        metalness: 0.02
+      })
+    );
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // 門前碎石步道
+    const pathMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.6, 12),
+      new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.95 })
+    );
+    pathMesh.rotation.x = -Math.PI / 2;
+    pathMesh.position.set(0, 0.015, -0.2);
+    pathMesh.receiveShadow = true;
+    scene.add(pathMesh);
+
+    // =========================================================================
+    // 5. 碰撞偵測系統與房屋建築（含牆壁、屋頂、可通行出入口）
+    // =========================================================================
+    const wallColliders = [];  // 儲存 2D AABB 碰撞盒：{ minX, maxX, minZ, maxZ }
+    const obstacleMeshes = []; // 儲存阻擋子彈射線的實體網格（牆壁、木箱、樹幹）
+
+    /**
+     * 新增一個具備陰影與碰撞盒的靜態方塊（用於牆體與障礙物）
+     */
+    function addSolidBox(w, h, d, x, y, z, material, addCollider = true) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      obstacleMeshes.push(mesh);
+
+      if (addCollider) {
+        wallColliders.push({
+          minX: x - w / 2,
+          maxX: x + w / 2,
+          minZ: z - d / 2,
+          maxZ: z + d / 2
+        });
+      }
+      return mesh;
+    }
+
+    /**
+     * 檢查玩家圓形半徑是否與任一牆體 AABB 發生碰撞
+     */
+    function isCollidingWithWorld(px, pz, radius = PLAYER_RADIUS) {
+      // 場景邊界限制
+      if (px < -55 || px > 55 || pz < -55 || pz > 55) return true;
+
+      for (let i = 0; i < wallColliders.length; i++) {
+        const b = wallColliders[i];
+        const closestX = Math.max(b.minX, Math.min(px, b.maxX));
+        const closestZ = Math.max(b.minZ, Math.min(pz, b.maxZ));
+        const dx = px - closestX;
+        const dz = pz - closestZ;
+        if (dx * dx + dz * dz < radius * radius) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * 建構前哨站木屋（中心位於 x=0, z=-10，正面朝向 +Z，留有寬 2.2m 出入口）
+     */
+    function buildOutpostHouse() {
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0xd6c7b2, roughness: 0.85 });
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.75 });
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.88 });
+
+      const hx = 0;
+      const hz = -10;
+      const width = 10;     // X 範圍: -5 ~ +5
+      const depth = 8;      // Z 範圍: -14 ~ -6
+      const wallH = 3.6;
+      const thick = 0.4;
+      const doorW = 2.2;    // 出入口寬度（角色可自由進出）
+      const doorH = 2.55;   // 出入口高度
+
+      // 1. 室內木質地板（不加水平阻擋，讓玩家可走進屋內）
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.08, depth), floorMat);
+      floor.position.set(hx, 0.04, hz);
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      // 2. 後牆、左牆、右牆（皆具備碰撞體，不可穿牆）
+      addSolidBox(width, wallH, thick, hx, wallH / 2, hz - depth / 2, wallMat, true); // 後牆
+      addSolidBox(thick, wallH, depth, hx - width / 2, wallH / 2, hz, wallMat, true); // 左牆
+      addSolidBox(thick, wallH, depth, hx + width / 2, wallH / 2, hz, wallMat, true); // 右牆
+
+      // 3. 前牆（分為左段、右段與門楣上段，中央留出真實出入口）
+      const sideFrontW = (width - doorW) / 2; // 3.9m
+      const frontZ = hz + depth / 2;          // z = -6
+
+      // 前牆左段
+      addSolidBox(
+        sideFrontW, wallH, thick,
+        hx - doorW / 2 - sideFrontW / 2, wallH / 2, frontZ,
+        wallMat, true
+      );
+      // 前牆右段
+      addSolidBox(
+        sideFrontW, wallH, thick,
+        hx + doorW / 2 + sideFrontW / 2, wallH / 2, frontZ,
+        wallMat, true
+      );
+      // 門楣（門洞上方牆體，高度在玩家頭頂之上，不設地面碰撞盒以便通行）
+      addSolidBox(
+        doorW, wallH - doorH, thick,
+        hx, doorH + (wallH - doorH) / 2, frontZ,
+        wallMat, false
+      );
+
+      // 門框木柱裝飾
+      addSolidBox(0.16, doorH, 0.48, hx - doorW / 2, doorH / 2, frontZ, woodMat, true);
+      addSolidBox(0.16, doorH, 0.48, hx + doorW / 2, doorH / 2, frontZ, woodMat, true);
+      addSolidBox(doorW + 0.32, 0.18, 0.5, hx, doorH + 0.09, frontZ, woodMat, false);
+
+      // 4. 雙斜坡屋頂與山牆
+      const slopeLen = 6.0;
+      const roofAngle = Math.atan2(2.1, width / 2);
+
+      const leftRoof = new THREE.Mesh(new THREE.BoxGeometry(slopeLen, 0.22, depth + 1.2), roofMat);
+      leftRoof.position.set(hx - 2.65, wallH + 0.95, hz);
+      leftRoof.rotation.z = roofAngle;
+      leftRoof.castShadow = true;
+      leftRoof.receiveShadow = true;
+      scene.add(leftRoof);
+
+      const rightRoof = new THREE.Mesh(new THREE.BoxGeometry(slopeLen, 0.22, depth + 1.2), roofMat);
+      rightRoof.position.set(hx + 2.65, wallH + 0.95, hz);
+      rightRoof.rotation.z = -roofAngle;
+      rightRoof.castShadow = true;
+      rightRoof.receiveShadow = true;
+      scene.add(rightRoof);
+
+      // 屋脊橫樑
+      addSolidBox(0.45, 0.35, depth + 1.3, hx, wallH + 2.02, hz, woodMat, false);
+
+      // 前後三角形山牆補滿屋頂縫隙
+      const gableShape = new THREE.Shape();
+      gableShape.moveTo(-width / 2, 0);
+      gableShape.lineTo(width / 2, 0);
+      gableShape.lineTo(0, 2.05);
+      gableShape.closePath();
+      const gableGeo = new THREE.ExtrudeGeometry(gableShape, { depth: thick, bevelEnabled: false });
+
+      const frontGable = new THREE.Mesh(gableGeo, wallMat);
+      frontGable.position.set(hx, wallH, frontZ - thick / 2);
+      frontGable.castShadow = true;
+      scene.add(frontGable);
+
+      const backGable = new THREE.Mesh(gableGeo, wallMat);
+      backGable.position.set(hx, wallH, hz - depth / 2 - thick / 2);
+      backGable.castShadow = true;
+      scene.add(backGable);
+
+      // 5. 屋內照明與戰術木桌（玩家走進屋內可看到陳設）
+      const indoorLight = new THREE.PointLight(0xfde68a, 4.5, 14);
+      indoorLight.position.set(hx, 3.2, hz);
+      scene.add(indoorLight);
+
+      addSolidBox(2.2, 0.9, 1.2, hx - 2.6, 0.45, hz - 2.2, woodMat, true); // 室內木桌
+      const crateMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.85 });
+      addSolidBox(1.1, 1.1, 1.1, hx + 3.2, 0.55, hz - 2.4, crateMat, true); // 室內補給箱
+    }
+
+    /**
+     * 建立戶外掩體木箱與低多邊形樹木
+     */
+    function buildOutdoorProps() {
+      const crateMat = new THREE.MeshStandardMaterial({ color: 0xa16207, roughness: 0.85 });
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+
+      // 戶外戰術掩體木箱
+      addSolidBox(1.4, 1.4, 1.4, -7.5, 0.7, -2.5, crateMat, true);
+      addSolidBox(1.2, 1.2, 1.2, -6.1, 0.6, -2.2, crateMat, true);
+      addSolidBox(1.5, 1.5, 1.5, 8.5, 0.75, -1.5, crateMat, true);
+
+      // 景觀松樹
+      const treePositions = [
+        [-14, -14], [-18, -3], [-15, 10], [16, -15], [19, -4], [15, 9], [-8, -22], [10, -22]
+      ];
+      treePositions.forEach(([tx, tz]) => {
+        addSolidBox(0.7, 2.4, 0.7, tx, 1.2, tz, trunkMat, true);
+        for (let layer = 0; layer < 3; layer++) {
+          const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(2.4 - layer * 0.5, 2.5, 7),
+            leafMat
+          );
+          cone.position.set(tx, 3.0 + layer * 1.4, tz);
+          cone.castShadow = true;
+          cone.receiveShadow = true;
+          scene.add(cone);
+        }
+      });
+    }
+
+    buildOutpostHouse();
+    buildOutdoorProps();
+
+    // =========================================================================
+    // 6. 建立明顯的 NPC 角色（「老兵傑克」，位於木屋門前右側）
+    // =========================================================================
+    const NPC_POS = new THREE.Vector3(4.2, 0, -3.2);
+    const npcGroup = new THREE.Group();
+    npcGroup.position.copy(NPC_POS);
+    scene.add(npcGroup);
+
+    // 將 NPC 本體也加入碰撞盒，避免玩家穿過 NPC 身體
+    wallColliders.push({
+      minX: NPC_POS.x - 0.55,
+      maxX: NPC_POS.x + 0.55,
+      minZ: NPC_POS.z - 0.55,
+      maxZ: NPC_POS.z + 0.55
+    });
+
+    let npcHeadGroup = null;
+    let npcTalkIndicator = null;
+    let isNpcSpeaking = false;
+
+    function buildNpcCharacter() {
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xfdba74, roughness: 0.7 });
+      const vestMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.75 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 });
+      const beretMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.6 });
+      const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+
+      // 雙腿
+      const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.28), pantsMat);
+      leftLeg.position.set(-0.17, 0.375, 0);
+      leftLeg.castShadow = true;
+      npcGroup.add(leftLeg);
+
+      const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.75, 0.28), pantsMat);
+      rightLeg.position.set(0.17, 0.375, 0);
+      rightLeg.castShadow = true;
+      npcGroup.add(rightLeg);
+
+      // 戰術背心軀幹
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.82, 0.38), vestMat);
+      torso.position.set(0, 1.16, 0);
+      torso.castShadow = true;
+      npcGroup.add(torso);
+
+      // 雙臂
+      const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), skinMat);
+      leftArm.position.set(-0.46, 1.14, 0);
+      leftArm.castShadow = true;
+      npcGroup.add(leftArm);
+
+      const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), skinMat);
+      rightArm.position.set(0.46, 1.14, 0);
+      rightArm.castShadow = true;
+      npcGroup.add(rightArm);
+
+      // 頭部與紅色貝雷帽
+      npcHeadGroup = new THREE.Group();
+      npcHeadGroup.position.set(0, 1.78, 0);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.44, 0.44), skinMat);
+      head.castShadow = true;
+      npcHeadGroup.add(head);
+
+      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.05), darkMat);
+      eyeL.position.set(-0.1, 0.04, 0.22);
+      npcHeadGroup.add(eyeL);
+
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.1;
+      npcHeadGroup.add(eyeR);
+
+      const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.26, 0.14, 12), beretMat);
+      beret.position.set(0.03, 0.25, 0);
+      beret.rotation.z = -0.15;
+      npcHeadGroup.add(beret);
+
+      npcGroup.add(npcHeadGroup);
+
+      // 頭頂懸浮驚嘆號/語音晶體標記
+      npcTalkIndicator = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.18, 0),
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          emissive: 0x0284c7,
+          emissiveIntensity: 0.8
+        })
+      );
+      npcTalkIndicator.position.set(0, 2.45, 0);
+      npcGroup.add(npcTalkIndicator);
+
+      // 頭頂名稱牌（Canvas Sprite）
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 512;
+      labelCanvas.height = 128;
+      const lctx = labelCanvas.getContext('2d');
+      lctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      lctx.beginPath();
+      lctx.roundRect(16, 16, 480, 96, 24);
+      lctx.fill();
+      lctx.strokeStyle = '#38bdf8';
+      lctx.lineWidth = 5;
+      lctx.stroke();
+      lctx.fillStyle = '#f8fafc';
+      lctx.font = 'bold 38px "Noto Sans TC", sans-serif';
+      lctx.textAlign = 'center';
+      lctx.textBaseline = 'middle';
+      lctx.fillText('🎖️ 老兵傑克（靠近語音對話）', 256, 64);
+
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(labelCanvas), transparent: true })
+      );
+      sprite.position.set(0, 2.95, 0);
+      sprite.scale.set(2.8, 0.7, 1);
+      npcGroup.add(sprite);
+
+      // 地面互動範圍提示光圈（讓玩家清楚看見語音觸發範圍）
+      const ringGeo = new THREE.RingGeometry(NPC_INTERACT_DISTANCE - 0.12, NPC_INTERACT_DISTANCE, 48);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.35
+      });
+      const rangeRing = new THREE.Mesh(ringGeo, ringMat);
+      rangeRing.rotation.x = -Math.PI / 2;
+      rangeRing.position.y = 0.025;
+      npcGroup.add(rangeRing);
+    }
+
+    buildNpcCharacter();
+
+    // =========================================================================
+    // 7. 建立標靶與巡邏敵人方塊、粒子特效與射擊判定
+    // =========================================================================
+    const shootableTargets = []; // 儲存所有可射擊物件資訊
+    const activeEffects = [];    // 儲存雷射軌跡與爆炸碎片動畫
+
+    /**
+     * 建立圓形同心圓標靶貼圖
+     */
+    function createBullseyeTexture() {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 256;
+      const ctx = c.getContext('2d');
+      const rings = ['#ffffff', '#1e293b', '#38bdf8', '#ef4444', '#facc15'];
+      rings.forEach((col, idx) => {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(128, 128, 120 - idx * 22, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      return new THREE.CanvasTexture(c);
+    }
+
+    /**
+     * 在房屋左側建立固定練習標靶
+     */
+    function spawnPracticeTargets() {
+      const bullseyeTex = createBullseyeTexture();
+      const standMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+      const coords = [
+        [-9.5, -8.5],
+        [-12.0, -6.5],
+        [-13.5, -3.5]
+      ];
+
+      coords.forEach(([tx, tz]) => {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.5, 8), standMat);
+        post.position.set(tx, 0.75, tz);
+        post.castShadow = true;
+        scene.add(post);
+
+        const disc = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.65, 0.65, 0.1, 24),
+          new THREE.MeshStandardMaterial({ map: bullseyeTex, roughness: 0.5 })
+        );
+        disc.rotation.x = Math.PI / 2;
+        disc.position.set(tx, 1.65, tz);
+        disc.lookAt(0, 1.65, 6);
+        disc.rotateX(Math.PI / 2);
+        disc.castShadow = true;
+        scene.add(disc);
+
+        shootableTargets.push({
+          type: 'bullseye',
+          mesh: disc,
+          baseRotX: disc.rotation.x,
+          tiltTimer: 0
+        });
+      });
+    }
+
+    /**
+     * 建立巡邏中的敵人方塊（可受擊閃爍、扣血擊破與自動重生）
+     */
+    function spawnEnemyCube(baseX, baseZ, patrolRange = 3.2, speed = 1.6) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xdc2626,
+        emissive: 0x450a0a,
+        roughness: 0.45,
+        metalness: 0.15
+      });
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), mat);
+      cube.position.set(baseX, 1.1, baseZ);
+      cube.castShadow = true;
+      scene.add(cube);
+
+      // 敵人發光雙眼，讓外觀更醒目
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+      const eyeBar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.06), eyeMat);
+      eyeBar.position.set(0, 0.15, 0.54);
+      cube.add(eyeBar);
+
+      shootableTargets.push({
+        type: 'enemy',
+        mesh: cube,
+        mat,
+        hp: 100,
+        maxHp: 100,
+        alive: true,
+        baseX,
+        baseZ,
+        patrolRange,
+        speed,
+        phase: Math.random() * Math.PI * 2,
+        flashTimer: 0,
+        respawnTimer: 0
+      });
+    }
+
+    spawnPracticeTargets();
+    spawnEnemyCube(-4.5, -18.5, 3.8, 1.7);
+    spawnEnemyCube(5.5, -18.0, 4.2, 2.0);
+    spawnEnemyCube(11.0, -9.5, 3.5, 1.5);
+    spawnEnemyCube(12.5, -4.5, 3.0, 2.2);
+    spawnEnemyCube(-10.5, 3.5, 3.2, 1.8);
+
+    // =========================================================================
+    // 8. 主角視角與手持武器、WASD 移動、滑鼠轉向與左鍵射擊
+    // =========================================================================
+    const playerPos = new THREE.Vector3(0, PLAYER_HEIGHT, 6.5);
+    let playerVelY = 0;
+    let isGrounded = true;
+    let yaw = 0;    // 水平視角
+    let pitch = 0;  // 垂直視角
+    let gunRecoil = 0;
+
+    camera.position.copy(playerPos);
+    scene.add(camera);
+
+    // 在攝影機右下角掛載第一人稱能量步槍模型
+    const gunGroup = new THREE.Group();
+    const gunBodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.6, roughness: 0.35 });
+    const gunCoreMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.9
+    });
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, 0.58), gunBodyMat);
+    const gunBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.32), gunCoreMat);
+    gunBarrel.position.set(0, 0.03, -0.38);
+    gunGroup.add(gunBody, gunBarrel);
+    gunGroup.position.set(0.28, -0.24, -0.45);
+    camera.add(gunGroup);
+
+    // 鍵盤狀態追蹤
+    const keys = {};
+    window.addEventListener('keydown', (e) => {
+      // 若使用者正在右上角輸入 API Key，不攔截按鍵
+      if (document.activeElement === apiKeyInput) return;
+
+      keys[e.code] = true;
+
+      if (e.code === 'Space' && isGrounded) {
+        playerVelY = 6.8;
+        isGrounded = false;
+      }
+
+      // 支援按 [E] 鍵直接觸發右下角 NPC 錄音開關按鈕（免解鎖滑鼠也能測語音）
+      if (e.code === 'KeyE' && isNearNpc && !npcTalkBtn.disabled) {
+        npcTalkBtn.click();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    // Pointer Lock 滑鼠鎖定狀態更新
+    document.addEventListener('pointerlockchange', () => {
+      const locked = document.pointerLockElement === renderer.domElement;
+      if (locked) {
+        pointerStatusEl.textContent = '視角已鎖定（滑鼠轉向、左鍵射擊、ESC 解鎖游標）';
+        pointerStatusEl.className = 'lock-badge locked';
+      } else {
+        pointerStatusEl.textContent = '視角未鎖定（點擊 3D 畫面鎖定準星）';
+        pointerStatusEl.className = 'lock-badge unlocked';
+      }
+    });
+
+    // 滑鼠移動控制視角轉向
+    document.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement === renderer.domElement) {
+        const sensitivity = 0.0022;
+        yaw -= e.movementX * sensitivity;
+        pitch -= e.movementY * sensitivity;
+        pitch = Math.max(-Math.PI / 2.15, Math.min(Math.PI / 2.15, pitch));
+      }
+    });
+
+    // 命中 UI 提示計時器
+    let hitUiTimer = null;
+    function showHitFeedback(text, isKill = false) {
+      hitMarkerEl.classList.add('active');
+      hitFeedbackTextEl.textContent = text;
+      hitFeedbackTextEl.style.color = isKill ? '#4ade80' : '#fde047';
+      hitFeedbackTextEl.classList.add('show');
+
+      clearTimeout(hitUiTimer);
+      hitUiTimer = setTimeout(() => {
+        hitMarkerEl.classList.remove('active');
+        hitFeedbackTextEl.classList.remove('show');
+      }, 420);
+    }
+
+    /**
+     * 建立雷射光束與擊中火花粒子
+     */
+    function spawnLaserAndSparks(startPt, endPt, sparkColor = 0xfacc15, count = 8) {
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([startPt, endPt]);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.9 });
+      const line = new THREE.Line(lineGeo, lineMat);
+      scene.add(line);
+      activeEffects.push({ type: 'line', mesh: line, mat: lineMat, life: 0.09, maxLife: 0.09 });
+
+      for (let i = 0; i < count; i++) {
+        const pMat = new THREE.MeshBasicMaterial({ color: sparkColor, transparent: true, opacity: 1 });
+        const pMesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), pMat);
+        pMesh.position.copy(endPt);
+        scene.add(pMesh);
+        const vel = new THREE.Vector3(
+          (Math.random() - 0.5) * 6,
+          Math.random() * 4.5 + 1,
+          (Math.random() - 0.5) * 6
+        );
+        activeEffects.push({ type: 'spark', mesh: pMesh, mat: pMat, vel, life: 0.35, maxLife: 0.35 });
+      }
+    }
+
+    const raycaster = new THREE.Raycaster();
+
+    /**
+     * 執行左鍵射擊與 Raycaster 命中偵測
+     */
+    function shootWeapon() {
+      playShootSfx();
+      gunRecoil = 0.12;
+
+      // 從畫面正中央準星發射射線
+      raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+      // 取得槍口世界座標（繪製雷射光束起點）
+      const muzzleWorld = new THREE.Vector3();
+      gunBarrel.getWorldPosition(muzzleWorld);
+
+      // 先檢查牆壁與障礙物距離（防止隔牆打中敵人）
+      const wallHits = raycaster.intersectObjects(obstacleMeshes, false);
+      const nearestWallDist = wallHits.length > 0 ? wallHits[0].distance : Infinity;
+
+      // 檢查所有存活的可射擊目標
+      const candidateMeshes = shootableTargets
+        .filter((t) => t.type === 'bullseye' || t.alive)
+        .map((t) => t.mesh);
+
+      const targetHits = raycaster.intersectObjects(candidateMeshes, false);
+
+      if (targetHits.length > 0 && targetHits[0].distance < nearestWallDist) {
+        const hit = targetHits[0];
+        const targetObj = shootableTargets.find((t) => t.mesh === hit.object);
+
+        if (targetObj.type === 'bullseye') {
+          score += 25;
+          scoreEl.textContent = score;
+          targetObj.tiltTimer = 0.25;
+          playHitSfx(false);
+          showHitFeedback('🎯 命中標靶！ +25');
+          spawnLaserAndSparks(muzzleWorld, hit.point, 0x38bdf8, 8);
+        } else if (targetObj.type === 'enemy' && targetObj.alive) {
+          targetObj.hp -= 35;
+          targetObj.flashTimer = 0.12;
+          targetObj.mat.emissive.setHex(0xffffff);
+
+          if (targetObj.hp <= 0) {
+            targetObj.alive = false;
+            targetObj.mesh.visible = false;
+            targetObj.respawnTimer = 3.0;
+            score += 100;
+            totalKills += 1;
+            scoreEl.textContent = score;
+            killsEl.textContent = totalKills;
+            playHitSfx(true);
+            showHitFeedback('💥 擊破敵人方塊！ +100', true);
+            spawnLaserAndSparks(muzzleWorld, hit.point, 0xef4444, 18);
+          } else {
+            score += 15;
+            scoreEl.textContent = score;
+            playHitSfx(false);
+            showHitFeedback(`🎯 命中敵人！(HP ${targetObj.hp}/${targetObj.maxHp})`);
+            spawnLaserAndSparks(muzzleWorld, hit.point, 0xfacc15, 10);
+          }
+        }
+      } else if (nearestWallDist < Infinity) {
+        // 打在牆壁或掩體上
+        spawnLaserAndSparks(muzzleWorld, wallHits[0].point, 0xd6d3d1, 5);
+      } else {
+        // 射向遠方天空
+        const farPt = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(45));
+        spawnLaserAndSparks(muzzleWorld, farPt, 0x38bdf8, 0);
+      }
+    }
+
+    // 點擊 3D 畫布：鎖定滑鼠視角並執行左鍵射擊
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      ensureAudioContext();
+
+      if (document.pointerLockElement !== renderer.domElement) {
+        renderer.domElement.requestPointerLock?.();
+      } else {
+        shootWeapon();
+      }
+    });
+
+    // =========================================================================
+    // 9. 靠近 NPC 錄音開關與 Gemini 3 語音互動 + 自動語音播放
+    // =========================================================================
+    // 動態補充 gemini-3.6-flash 選項至模型選單，提供完整 Gemini 3 系列選擇
+    (function addGemini36Option() {
+      const opt = document.createElement('option');
+      opt.value = 'gemini-3.6-flash';
+      opt.textContent = 'gemini-3.6-flash';
+      chatModelSelect.insertBefore(opt, chatModelSelect.children[1]);
+    })();
+
+    let isNearNpc = false;
+    let isRecording = false;
+    let isProcessingVoice = false;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    const npcChatHistory = []; // 保留最近幾輪對話記憶，讓 NPC 對答更連貫
+
+    // 避免點擊對話按鈕時觸發 3D 射擊
+    npcInteractContainer.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    /**
+     * 點擊「與 NPC 對話」按鈕：切換「開始錄音 / 停止錄音」狀態
+     */
+    npcTalkBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      ensureAudioContext();
+
+      if (isProcessingVoice) return;
+
+      // 若 NPC 正在播放上一段語音，點擊新對話時先停止舊語音
+      if (activeVoiceAudio) {
+        activeVoiceAudio.pause();
+        activeVoiceAudio = null;
+        isNpcSpeaking = false;
+      }
+
+      if (!isRecording) {
+        await startMicRecording();
+      } else {
+        stopMicRecordingAndSend();
+      }
+    });
+
+    /**
+     * 第一次點擊：呼叫 getUserMedia 與 MediaRecorder 開始錄音
+     */
+    async function startMicRecording() {
+      const apiKey = (apiKeyInput.value.trim() || localStorage.getItem(STORAGE_KEY_API) || '').trim();
+      if (!apiKey) {
+        setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 請先在右上角輸入並儲存 GEMINI_API_KEY！');
+        apiKeyInput.focus();
+        return;
+      }
+      // 同步自動儲存方便測試
+      localStorage.setItem(STORAGE_KEY_API, apiKey);
+      keyBadge.textContent = '已儲存金鑰';
+      keyBadge.className = 'key-status-dot saved';
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 瀏覽器不支援麥克風錄音（請確認使用 localhost 或 HTTPS）');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordedChunks = [];
+
+        // 選擇瀏覽器支援的最佳錄音格式
+        const preferredTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+        let chosenType = '';
+        for (const t of preferredTypes) {
+          if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) {
+            chosenType = t;
+            break;
+          }
+        }
+
+        mediaRecorder = chosenType ? new MediaRecorder(stream, { mimeType: chosenType }) : new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            recordedChunks.push(ev.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          // 釋放麥克風軌道資源
+          stream.getTracks().forEach((track) => track.stop());
+
+          const rawMime = mediaRecorder.mimeType || chosenType || 'audio/webm';
+          // 移除 ";codecs=opus" 等附加參數，確保符合 Gemini API inlineData.mimeType 格式要求
+          const cleanMime = rawMime.split(';')[0] || 'audio/webm';
+          const audioBlob = new Blob(recordedChunks, { type: cleanMime });
+
+          if (audioBlob.size < 200) {
+            setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 錄音時間過短或未偵測到聲音，請再試一次');
+            resetTalkButtonUI();
+            return;
+          }
+
+          await processVoiceWithGemini3(audioBlob, cleanMime);
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        npcTalkBtn.textContent = '⏹️ 錄音中... 點擊停止';
+        npcTalkBtn.classList.add('recording');
+        setVoiceStatus('recording', '狀態：🔴 錄音中... 請對著麥克風向「老兵傑克」說話');
+      } catch (err) {
+        setVoiceStatus('error', `狀態：❌ 錯誤訊息 — 無法存取麥克風：${err.message}`);
+        resetTalkButtonUI();
+      }
+    }
+
+    /**
+     * 第二次點擊：停止錄音並觸發上傳處理
+     */
+    function stopMicRecordingAndSend() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        isRecording = false;
+        isProcessingVoice = true;
+        npcTalkBtn.disabled = true;
+        npcTalkBtn.classList.remove('recording');
+        npcTalkBtn.textContent = '⏳ 處理語音中...';
+        setVoiceStatus('processing', '狀態：⏳ 上傳辨識與生成語音中...');
+        mediaRecorder.stop();
+      }
+    }
+
+    function resetTalkButtonUI() {
+      isRecording = false;
+      isProcessingVoice = false;
+      npcTalkBtn.disabled = false;
+      npcTalkBtn.classList.remove('recording');
+      npcTalkBtn.textContent = '🎤 與 NPC 對話';
+    }
+
+    /**
+     * 將 Blob 轉換為純 Base64 字串
+     */
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = String(reader.result || '');
+          const commaIdx = res.indexOf(',');
+          resolve(commaIdx >= 0 ? res.slice(commaIdx + 1) : res);
+        };
+        reader.onerror = () => reject(new Error('音訊轉換 Base64 失敗'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    /**
+     * 串接 Gemini 3 系列模型：
+     * 步驟 1 — 傳送錄音 Base64 給 Gemini 3 多模態模型，辨識玩家語音並生成符合老兵角色的回覆
+     * 步驟 2 — 將角色回覆送往 Gemini 3 TTS 模型合成高品質語音，收到後立即自動播放
+     */
+    async function processVoiceWithGemini3(audioBlob, mimeType) {
+      const apiKey = (apiKeyInput.value.trim() || localStorage.getItem(STORAGE_KEY_API) || '').trim();
+      const chatModel = chatModelSelect.value;
+      const ttsModel = ttsModelSelect.value;
+
+      try {
+        setVoiceStatus('processing', `狀態：⏳ 上傳辨識與生成語音中（1/2 ${chatModel} 聽取語音中...）`);
+        const base64Audio = await blobToBase64(audioBlob);
+
+        // 整理最近 4 輪對話歷史供 NPC 參考
+        const recentHistoryText = npcChatHistory.length
+          ? '\n近期對話紀錄：\n' + npcChatHistory.slice(-4).map((h) => `玩家：${h.user}\n傑克：${h.npc}`).join('\n')
+          : '';
+
+        const systemPrompt = [
+          '你是 3D 射擊前哨站木屋旁的駐守 NPC「老兵傑克」（Veteran Jack）。',
+          '性格設定：身經百戰、爽朗幽默、說話俐落有軍人風範，使用自然道地的台灣繁體中文口語。',
+          `目前玩家戰績：得分 ${score} 分，已擊破 ${totalKills} 個敵人方塊。木屋內有補給桌，四周有練習標靶與巡邏紅色敵方方塊。`,
+          '請聽取玩家的錄音內容，依角色語氣直接回答（控制在 1 到 3 句話、約 20～65 字內，適合直接語音朗讀，勿加星號或舞台動作括號）。',
+          '請嚴格輸出 JSON 格式：{"transcript":"玩家說的話轉錄","reply":"老兵傑克的口語回答","style":"steady, warm veteran soldier speaking natural Taiwanese Mandarin"}',
+          recentHistoryText
+        ].join('\n');
+
+        // 呼叫 Gemini 3 理解音訊並產生角色台詞
+        const chatUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(chatModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const chatRes = await fetch(chatUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: systemPrompt }]
+            },
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { inlineData: { mimeType, data: base64Audio } },
+                  { text: '請辨識這段語音並以老兵傑克的身分回覆 JSON。' }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              thinkingConfig: { thinkingLevel: 'LOW' }
+            }
+          })
+        });
+
+        const chatData = await chatRes.json();
+        if (!chatRes.ok) {
+          throw new Error(chatData?.error?.message || `Gemini 3 對話請求失敗 (HTTP ${chatRes.status})`);
+        }
+
+        const rawJsonText = (chatData?.candidates?.[0]?.content?.parts || [])
+          .map((p) => p.text || '')
+          .join('')
+          .trim();
+
+        let parsed = { transcript: '（語音輸入）', reply: '', style: 'steady, warm veteran soldier' };
+        try {
+          parsed = JSON.parse(rawJsonText);
+        } catch (_) {
+          parsed.reply = rawJsonText || '收到！新兵，保持警戒，隨時注意四周的紅色方塊！';
+        }
+
+        const userTranscript = parsed.transcript || '（語音訊息）';
+        const npcReplyText = parsed.reply || '聽不太清楚，通訊有點雜訊，再跟我說一次吧！';
+        const voiceStyle = parsed.style || 'steady, warm veteran soldier';
+
+        // 記錄對話歷史並更新畫面字幕
+        npcChatHistory.push({ user: userTranscript, npc: npcReplyText });
+        dialogueUserEl.textContent = `🗣️ 你說：「${userTranscript}」`;
+        dialogueNpcEl.innerHTML = `<strong>🎖️ 老兵傑克：</strong>「${npcReplyText}」`;
+        dialogueBox.classList.add('visible');
+
+        // 步驟 2：呼叫 Gemini 3 TTS 模型將回覆合成為語音
+        setVoiceStatus('processing', `狀態：⏳ 上傳辨識與生成語音中（2/2 ${ttsModel} 合成語音中...）`);
+        const audioResult = await requestGemini3TtsAudio(apiKey, ttsModel, npcReplyText, voiceStyle);
+
+        // 收到語音後立刻自動播放
+        resetTalkButtonUI();
+        await playBase64NpcAudio(audioResult.base64Data, audioResult.mimeType);
+      } catch (err) {
+        console.error('Gemini 3 語音互動錯誤：', err);
+        resetTalkButtonUI();
+        setVoiceStatus('error', `狀態：❌ 錯誤訊息 — ${err.message}`);
+      }
+    }
+
+    /**
+     * 呼叫 Gemini 3 TTS 系列模型取得 Base64 語音（同時相容 Gemini 3.8 TTS 與 3.1 TTS 架構）
+     */
+    async function requestGemini3TtsAudio(apiKey, ttsModel, textToSpeak, styleHint) {
+      const is38Tts = ttsModel.includes('3.8');
+      const genUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(ttsModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      // 依模型版本組裝對應的 Gemini 3 TTS 結構
+      const genBody = is38Tts
+        ? {
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: textToSpeak,
+                    speechMetadata: { style: styleHint }
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: { voice: 'Charon' } // 深沉穩重的男聲預建聲線
+              }
+            }
+          }
+        : {
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: textToSpeak }]
+              }
+            ],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Charon' }
+                }
+              }
+            }
+          };
+
+      const res = await fetch(genUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify(genBody)
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        const audioPart = (data?.candidates?.[0]?.content?.parts || []).find((p) => p.inlineData?.data);
+        if (audioPart) {
+          return {
+            base64Data: audioPart.inlineData.data,
+            mimeType: audioPart.inlineData.mimeType || 'audio/wav'
+          };
+        }
+      }
+
+      // 若環境將 Gemini 3.8 TTS 路由至 Interactions API (/v1beta/interactions)，自動無縫切換呼叫
+      if (is38Tts) {
+        const interRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/interactions?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify({
+              model: ttsModel,
+              input: [
+                {
+                  type: 'user_input',
+                  content: [
+                    {
+                      type: 'text',
+                      text: textToSpeak,
+                      annotations: [{ type: 'speech_metadata', style: styleHint }]
+                    }
+                  ]
+                }
+              ],
+              response_format: { type: 'audio' },
+              generation_config: {
+                speech_config: [{ voice: 'Charon' }]
+              },
+              store: false
+            })
+          }
+        );
+
+        const interData = await interRes.json();
+        if (!interRes.ok) {
+          throw new Error(interData?.error?.message || `Gemini 3.8 TTS 語音合成失敗 (HTTP ${interRes.status})`);
+        }
+
+        // 從 Interactions 回應結構解析音訊區塊
+        for (const step of interData?.steps || interData?.outputs || []) {
+          for (const block of step?.content || [step]) {
+            const b64 = block?.data || block?.inline_data?.data || block?.inlineData?.data;
+            if (b64) {
+              return {
+                base64Data: b64,
+                mimeType: block?.mime_type || block?.inline_data?.mime_type || 'audio/wav'
+              };
+            }
+          }
+        }
+      }
+
+      throw new Error(data?.error?.message || '模型未回傳有效的音訊資料');
+    }
+
+    /**
+     * 為無標頭的 16-bit 單聲道 Raw PCM 資料補上標準 44-byte WAV 檔頭
+     */
+    function wrapPcm16ToWavBlob(pcmBytes, sampleRate = 24000) {
+      const numChannels = 1;
+      const bitsPerSample = 16;
+      const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+      const blockAlign = (numChannels * bitsPerSample) / 8;
+      const dataSize = pcmBytes.byteLength;
+
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      const writeStr = (offset, str) => {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      };
+
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM = 1
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+      writeStr(36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      new Uint8Array(buffer, 44).set(pcmBytes);
+      return new Blob([buffer], { type: 'audio/wav' });
+    }
+
+    /**
+     * 解碼 Base64 音訊（自動判別 WAV / MP3 / OGG 或 Raw PCM）並立即自動播放
+     */
+    async function playBase64NpcAudio(base64Data, mimeType = '') {
+      const binaryStr = atob(base64Data);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+
+      // 檢查檔案開頭是否已為 RIFF (WAV)、OggS 或 MP3
+      const isRiffWav =
+        bytes.length > 12 &&
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46;
+      const isOgg = bytes.length > 4 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67;
+      const isMp3 =
+        bytes.length > 3 &&
+        ((bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) ||
+          (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0));
+
+      let playableBlob;
+      if (isRiffWav) {
+        playableBlob = new Blob([bytes], { type: 'audio/wav' });
+      } else if (isOgg) {
+        playableBlob = new Blob([bytes], { type: 'audio/ogg' });
+      } else if (isMp3) {
+        playableBlob = new Blob([bytes], { type: 'audio/mpeg' });
+      } else {
+        // 解析取樣率（例如 audio/L16;codec=pcm;rate=24000），預設 24000Hz 封裝成 WAV
+        const rateMatch = /rate=(\d+)/i.exec(mimeType);
+        const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
+        playableBlob = wrapPcm16ToWavBlob(bytes, sampleRate);
+      }
+
+      const audioUrl = URL.createObjectURL(playableBlob);
+      const audio = new Audio(audioUrl);
+      activeVoiceAudio = audio;
+      isNpcSpeaking = true;
+
+      setVoiceStatus('playing', '狀態：🔊 播放中 — 老兵傑克正在語音回覆...');
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (activeVoiceAudio === audio) {
+          activeVoiceAudio = null;
+          isNpcSpeaking = false;
+          setVoiceStatus('idle', '狀態：✅ 語音播放完畢（靠近 NPC 可再次點擊對話）');
+        }
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        isNpcSpeaking = false;
+        setVoiceStatus('error', '狀態：❌ 錯誤訊息 — 瀏覽器播放合成語音失敗');
+      };
+
+      await audio.play();
+    }
+
+    // =========================================================================
+    // 10. 主遊戲迴圈（移動碰撞、敵人巡邏、NPC 距離偵測與畫面渲染）
+    // =========================================================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.elapsedTime;
+
+      // 1. 鍵盤左右方向鍵輔助轉向
+      const turnSpeed = 2.0;
+      if (keys['ArrowLeft']) yaw += turnSpeed * dt;
+      if (keys['ArrowRight']) yaw -= turnSpeed * dt;
+
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+
+      // 2. WASD 角色移動與 X/Z 分軸滑動碰撞偵測（確保不能穿牆，可從門口進出）
+      const moveSpeed = 6.2;
+      const forwardX = -Math.sin(yaw);
+      const forwardZ = -Math.cos(yaw);
+      const rightX = Math.cos(yaw);
+      const rightZ = -Math.sin(yaw);
+
+      let moveX = 0;
+      let moveZ = 0;
+      if (keys['KeyW']) { moveX += forwardX; moveZ += forwardZ; }
+      if (keys['KeyS']) { moveX -= forwardX; moveZ -= forwardZ; }
+      if (keys['KeyD']) { moveX += rightX; moveZ += rightZ; }
+      if (keys['KeyA']) { moveX -= rightX; moveZ -= rightZ; }
+
+      const moveLen = Math.hypot(moveX, moveZ);
+      if (moveLen > 0) {
+        moveX = (moveX / moveLen) * moveSpeed * dt;
+        moveZ = (moveZ / moveLen) * moveSpeed * dt;
+
+        const nextX = playerPos.x + moveX;
+        if (!isCollidingWithWorld(nextX, playerPos.z)) {
+          playerPos.x = nextX;
+        }
+        const nextZ = playerPos.z + moveZ;
+        if (!isCollidingWithWorld(playerPos.x, nextZ)) {
+          playerPos.z = nextZ;
+        }
+      }
+
+      // 垂直跳躍與重力
+      playerVelY -= 18.0 * dt;
+      playerPos.y += playerVelY * dt;
+      if (playerPos.y <= PLAYER_HEIGHT) {
+        playerPos.y = PLAYER_HEIGHT;
+        playerVelY = 0;
+        isGrounded = true;
+      }
+
+      camera.position.copy(playerPos);
+
+      // 槍枝後座力回復與行進擺動
+      gunRecoil = Math.max(0, gunRecoil - dt * 0.85);
+      const walkBob = moveLen > 0 && isGrounded ? Math.sin(elapsed * 11) * 0.012 : 0;
+      gunGroup.position.set(0.28, -0.24 + walkBob, -0.45 + gunRecoil);
+
+      // 3. 更新標靶與巡邏敵人方塊狀態
+      for (const t of shootableTargets) {
+        if (t.type === 'bullseye') {
+          if (t.tiltTimer > 0) {
+            t.tiltTimer -= dt;
+            t.mesh.rotation.x = t.baseRotX - 0.45;
+          } else {
+            t.mesh.rotation.x = t.baseRotX;
+          }
+        } else if (t.type === 'enemy') {
+          if (t.alive) {
+            t.mesh.position.x = t.baseX + Math.sin(elapsed * t.speed + t.phase) * t.patrolRange;
+            t.mesh.position.y = 1.05 + Math.abs(Math.sin(elapsed * 3.2 + t.phase)) * 0.25;
+            t.mesh.rotation.y += dt * 1.4;
+
+            if (t.flashTimer > 0) {
+              t.flashTimer -= dt;
+              if (t.flashTimer <= 0) t.mat.emissive.setHex(0x450a0a);
+            }
+          } else {
+            t.respawnTimer -= dt;
+            if (t.respawnTimer <= 0) {
+              t.alive = true;
+              t.hp = t.maxHp;
+              t.mat.emissive.setHex(0x450a0a);
+              t.mesh.visible = true;
+            }
+          }
+        }
+      }
+
+      // 4. 更新雷射光束與擊中火花粒子
+      for (let i = activeEffects.length - 1; i >= 0; i--) {
+        const fx = activeEffects[i];
+        fx.life -= dt;
+        if (fx.life <= 0) {
+          scene.remove(fx.mesh);
+          fx.mesh.geometry.dispose();
+          fx.mat.dispose();
+          activeEffects.splice(i, 1);
+        } else {
+          fx.mat.opacity = fx.life / fx.maxLife;
+          if (fx.type === 'spark') {
+            fx.vel.y -= 12 * dt;
+            fx.mesh.position.addScaledVector(fx.vel, dt);
+          }
+        }
+      }
+
+      // 5. 偵測主角與 NPC 的水平距離，顯示或隱藏「與 NPC 對話」按鈕
+      const distToNpc = Math.hypot(playerPos.x - NPC_POS.x, playerPos.z - NPC_POS.z);
+      const nowNear = distToNpc <= NPC_INTERACT_DISTANCE;
+
+      if (nowNear !== isNearNpc) {
+        isNearNpc = nowNear;
+        if (isNearNpc) {
+          npcInteractContainer.classList.add('visible');
+          if (!isRecording && !isProcessingVoice && !isNpcSpeaking) {
+            setVoiceStatus('idle', '狀態：已進入互動範圍 — 點擊右下角「與 NPC 對話」（或按 E 鍵）開始錄音');
+          }
+        } else {
+          // 離開範圍時隱藏按鈕（若正在錄音中離開，安全停止錄音）
+          npcInteractContainer.classList.remove('visible');
+          if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+            stopMicRecordingAndSend();
+          } else if (!isProcessingVoice && !isNpcSpeaking) {
+            setVoiceStatus('idle', '狀態：待機中（靠近木屋旁的「老兵傑克」即可語音對話）');
+          }
+        }
+      }
+
+      // NPC 面向玩家與說話時的生動動態
+      if (isNearNpc) {
+        const angleToPlayer = Math.atan2(playerPos.x - NPC_POS.x, playerPos.z - NPC_POS.z);
+        npcGroup.rotation.y = angleToPlayer;
+      }
+      if (npcTalkIndicator) {
+        npcTalkIndicator.rotation.y += dt * (isNpcSpeaking ? 6.0 : 2.0);
+        npcTalkIndicator.position.y = 2.45 + Math.sin(elapsed * 3.5) * 0.08;
+      }
+      if (npcHeadGroup) {
+        npcHeadGroup.rotation.x = isNpcSpeaking ? Math.sin(elapsed * 18) * 0.12 : 0;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // 視窗尺寸縮放自適應
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
